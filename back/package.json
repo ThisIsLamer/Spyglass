@@ -1,0 +1,101 @@
+{
+  "name": "spyglass-api",
+  "version": "1.0.0",
+  "description": "Spyglass API for tracking activity and analyzing actions on Frigate videos",
+  "type": "module",
+  "main": "dist/index.js",
+  "imports": {
+    "#src/*": {
+      "types": "./src/*",
+      "development": "./src/*",
+      "default": "./dist/*"
+    },
+    "#root/*": {
+      "types": "./*",
+      "default": "./*"
+    },
+    "#types/*": {
+      "types": "./src/types/*",
+      "development": "./src/types/*",
+      "default": "./dist/types/*"
+    },
+    "#providers/*": {
+      "types": "./src/providers/*",
+      "development": "./src/providers/*",
+      "default": "./dist/providers/*"
+    },
+    "#services/*": {
+      "types": "./src/services/*",
+      "development": "./src/services/*",
+      "default": "./dist/services/*"
+    }
+  },
+  "mikro-orm": {
+    "useTsNode": true,
+    "configPaths": [
+      "./src/database/mikro-orm.config.ts"
+    ]
+  },
+  "scripts": {
+    "dev": "tsx watch --conditions=development --clear-screen=false src",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "db:schema:update": "npx tsx --conditions=development node_modules/@mikro-orm/cli/cli.js schema:update --run",
+    "db:schema:drop": "npx tsx --conditions=development node_modules/@mikro-orm/cli/cli.js schema:drop --run",
+    "db:cache:generate": "npx mikro-orm cache:generate",
+    "db:migration:create": "npx tsx --conditions=development node_modules/@mikro-orm/cli/cli.js migration:create",
+    "db:migration:up": "npx tsx --conditions=development node_modules/@mikro-orm/cli/cli.js migration:up",
+    "db:migration:down": "npx tsx --conditions=development node_modules/@mikro-orm/cli/cli.js migration:down"
+  },
+  "keywords": [
+    "ai",
+    "provider",
+    "gateway",
+    "ollama",
+    "vllm"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/rate-limit": "^10.3.0",
+    "@mikro-orm/core": "^7.0.8",
+    "@mikro-orm/decorators": "^7.0.8",
+    "@mikro-orm/mariadb": "^7.0.8",
+    "@mikro-orm/migrations": "^7.0.8",
+    "@mikro-orm/reflection": "^7.0.8",
+    "argon2": "^0.44.0",
+    "axios": "^1.13.2",
+    "crypto": "^1.0.1",
+    "dotenv": "^17.2.3",
+    "fastify": "^5.6.2",
+    "jose": "^6.2.3",
+    "mariadb": "^3.4.5",
+    "mqtt": "^5.15.1",
+    "ping": "^1.0.0",
+    "zod": "^4.3.4"
+  },
+  "devDependencies": {
+    "@mikro-orm/cli": "^7.0.8",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.0.3",
+    "@typescript-eslint/eslint-plugin": "^8.51.0",
+    "@typescript-eslint/parser": "^8.51.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.4",
+    "jest": "^30.2.0",
+    "prettier": "^3.7.4 ",
+    "ts-jest": "^29.4.6",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
