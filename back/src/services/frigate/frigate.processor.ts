@@ -88,7 +88,8 @@ export class FrigateProcessor {
     }
 
     const prompt = this.buildPrompt(watcher.prompt, review);
-    const mediaPath = this.getMediaUrl(review, watcher.analysisType) ?? undefined;
+    const mediaUrl = this.getMediaUrl(review, watcher.analysisType);
+    const mediaBase64 = mediaUrl ? await this.fetchMediaAsBase64(mediaUrl, watcher.analysisType) : undefined;
 
     const event = await this.analysisService.create({
       watcher,
@@ -99,19 +100,19 @@ export class FrigateProcessor {
       aiModel: provider.model,
       label: review.data.objects[0],
       zone: review.data.zones[0],
-      mediaPath,
+      mediaPath: mediaUrl ?? undefined,
     });
 
-    this.analyze(event.guid, provider, prompt, mediaPath);
+    this.analyze(event.guid, provider, prompt, mediaBase64);
   }
 
-  private async analyze(eventGuid: string, provider: AiProvider, prompt: string, mediaPath: string | undefined): Promise<void> {
+  private async analyze(eventGuid: string, provider: AiProvider, prompt: string, mediaBase64: string | undefined): Promise<void> {
     const startTime = Date.now();
 
     try {
       await this.analysisService.update(eventGuid, { status: AnalysisStatus.PROCESSING });
 
-      const response = await this.callAiProvider(provider, prompt, mediaPath);
+      const response = await this.callAiProvider(provider, prompt, mediaBase64);
 
       await this.analysisService.update(eventGuid, {
         status: AnalysisStatus.COMPLETED,
@@ -129,15 +130,15 @@ export class FrigateProcessor {
     }
   }
 
-  private async callAiProvider(provider: AiProvider, prompt: string, mediaPath: string | undefined): Promise<Record<string, unknown>> {
+  private async callAiProvider(provider: AiProvider, prompt: string, mediaBase64: string | undefined): Promise<Record<string, unknown>> {
     const messages: Array<Record<string, unknown>> = [];
 
-    if (mediaPath) {
+    if (mediaBase64) {
       messages.push({
         role: 'user',
         content: [
           { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: mediaPath } },
+          { type: 'image_url', image_url: { url: mediaBase64 } },
         ],
       });
     } else {
@@ -171,6 +172,20 @@ export class FrigateProcessor {
     }
 
     return JSON.parse(content) as Record<string, unknown>;
+  }
+
+  private async fetchMediaAsBase64(url: string, analysisType: string): Promise<string> {
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`Failed to fetch media from Frigate: ${res.status}`);
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const base64 = buffer.toString('base64');
+
+    const mimeType = analysisType === 'video_clip' ? 'video/mp4' : 'image/jpeg';
+    return `data:${mimeType};base64,${base64}`;
   }
 
   private buildPrompt(template: string, review: ReviewData): string {

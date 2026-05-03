@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <link rel="icon" href="/favicon.ico">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spyglass</title>
+    <style>
+      :root {
+        --splash-bg: #0d1117;
+        --splash-accent: #00e5ff;
+      }
+      body { margin: 0; background: var(--splash-bg); }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: var(--splash-bg);
+        transition: opacity 0.6s ease, visibility 0.6s ease;
+      }
+      #splash.splash--hidden {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+      #splash svg {
+        width: 72px;
+        height: 72px;
+        animation: splash-glow 2s ease-in-out infinite;
+      }
+      #splash .splash-title {
+        margin-top: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        color: var(--splash-accent);
+        opacity: 0;
+        animation: splash-fade-in 0.8s ease 0.3s forwards;
+      }
+      #splash .splash-bar {
+        margin-top: 24px;
+        width: 120px;
+        height: 2px;
+        background: rgba(0, 229, 255, 0.15);
+        border-radius: 2px;
+        overflow: hidden;
+        opacity: 0;
+        animation: splash-fade-in 0.6s ease 0.6s forwards;
+      }
+      #splash .splash-bar::after {
+        content: '';
+        display: block;
+        width: 40%;
+        height: 100%;
+        background: var(--splash-accent);
+        border-radius: 2px;
+        animation: splash-loading 1.2s ease-in-out infinite;
+      }
+      @keyframes splash-glow {
+        0%, 100% { filter: drop-shadow(0 0 8px rgba(0,229,255,0.3)); transform: scale(1); }
+        50% { filter: drop-shadow(0 0 20px rgba(0,229,255,0.6)); transform: scale(1.04); }
+      }
+      @keyframes splash-fade-in {
+        from { opacity: 0; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes splash-loading {
+        0% { transform: translateX(-100%); }
+        50% { transform: translateX(250%); }
+        100% { transform: translateX(-100%); }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="splash">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+        <circle cx="32" cy="32" r="28" stroke="url(#sg1)" stroke-width="2" fill="rgba(0,229,255,0.05)"/>
+        <circle cx="32" cy="32" r="18" stroke="url(#sg1)" stroke-width="1.5" fill="rgba(0,229,255,0.08)"/>
+        <circle cx="32" cy="32" r="8" fill="url(#sg1)"/>
+        <circle cx="32" cy="32" r="4" fill="#0d1117"/>
+        <line x1="32" y1="4" x2="32" y2="14" stroke="url(#sg1)" stroke-width="1" stroke-linecap="round"/>
+        <line x1="32" y1="50" x2="32" y2="60" stroke="url(#sg1)" stroke-width="1" stroke-linecap="round"/>
+        <line x1="4" y1="32" x2="14" y2="32" stroke="url(#sg1)" stroke-width="1" stroke-linecap="round"/>
+        <line x1="50" y1="32" x2="60" y2="32" stroke="url(#sg1)" stroke-width="1" stroke-linecap="round"/>
+        <path d="M10 20 L10 10 L20 10" stroke="url(#sg1)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M44 10 L54 10 L54 20" stroke="url(#sg1)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M54 44 L54 54 L44 54" stroke="url(#sg1)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <path d="M20 54 L10 54 L10 44" stroke="url(#sg1)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <defs>
+          <linearGradient id="sg1" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00e5ff"/>
+            <stop offset="100%" stop-color="#00bcd4"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <span class="splash-title">SPYGLASS</span>
+      <div class="splash-bar"></div>
+    </div>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

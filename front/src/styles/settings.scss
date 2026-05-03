@@ -1,0 +1,10 @@
+/**
+ * src/styles/settings.scss
+ *
+ * Spyglass theme overrides
+ */
+
+@use 'vuetify/settings' with (
+  $body-font-family: 'Roboto',
+  $border-radius-root: 12px,
+);
