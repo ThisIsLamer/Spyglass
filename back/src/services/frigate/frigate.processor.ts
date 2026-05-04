@@ -172,6 +172,7 @@ export class FrigateProcessor {
   }
 
   private async fetchMediaAsBase64(url: string, analysisType: string): Promise<string> {
+    console.log(`[FrigateProcessor] Fetching media: ${url}`);
     const res = await fetch(url);
 
     if (!res.ok) {
@@ -203,7 +204,7 @@ export class FrigateProcessor {
 
     if (analysisType === 'video_clip') {
       if (review.start_time && review.end_time) {
-        return `${API_URL}/api/Entry/start/${review.start_time}/end/${review.end_time}/clip.mp4`;
+        return `${API_URL}/api/${review.camera}/start/${review.start_time}/end/${review.end_time}/clip.mp4`;
       }
       if (detectionId) {
         return `${API_URL}/api/events/${detectionId}/clip.mp4`;
