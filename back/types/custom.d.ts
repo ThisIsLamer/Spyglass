@@ -13,6 +13,6 @@ declare module 'fastify' {
       body?: import('zod').ZodType;
       query?: import('zod').ZodType;
       params?: import('zod').ZodType;
-    };
+    } | undefined;
   }
 }
