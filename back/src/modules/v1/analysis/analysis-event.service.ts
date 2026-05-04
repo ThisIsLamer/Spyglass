@@ -3,6 +3,7 @@ import { orm } from "#src/database/index.js";
 import { AnalysisEventPresenter } from "./analysis-event.presenter.js";
 import { AnalysisEvent, AnalysisStatus } from "./analysis-event.entity.js";
 import { Watcher } from "#src/modules/v1/watcher/watcher.entity.js";
+import type { SqlEntityManager } from "@mikro-orm/mariadb";
 
 export interface CreateAnalysisEventDto {
   watcher: Watcher;
@@ -30,7 +31,15 @@ export interface AnalysisEventFilters {
 }
 
 export class AnalysisEventService {
-  private get em() { return orm.em; }
+  private forkedEm: SqlEntityManager | null;
+
+  constructor(em?: SqlEntityManager) {
+    this.forkedEm = em ?? null;
+  }
+
+  private get em(): SqlEntityManager {
+    return this.forkedEm ?? orm.em as SqlEntityManager;
+  }
 
   async findAll(filters?: AnalysisEventFilters) {
     const where: Record<string, unknown> = {};

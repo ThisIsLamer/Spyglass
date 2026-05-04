@@ -9,11 +9,11 @@ import type { FrigateReviewData } from './frigate.handler.js';
 const { API_URL } = GLOBAL_CONFIG.FRIGATE;
 
 export class FrigateProcessor {
-  private analysisService = new AnalysisEventService();
   private cooldowns = new Map<string, number>();
 
   async processReview(review: FrigateReviewData): Promise<void> {
     const em = orm.em.fork();
+    const analysisService = new AnalysisEventService(em);
 
     try {
       const watchers = await em.find(Watcher, { enabled: true }, { populate: ['aiProvider'] });
@@ -33,7 +33,7 @@ export class FrigateProcessor {
 
         console.log(`[FrigateProcessor] Watcher "${watcher.name}" matched, starting analysis`);
         this.setCooldown(watcher.guid, review.camera, watcher.cooldownSeconds);
-        await this.runAnalysis(watcher, review);
+        await this.runAnalysis(watcher, review, analysisService);
       }
     } catch (err) {
       console.error('[FrigateProcessor] Error processing review:', err);
@@ -75,7 +75,7 @@ export class FrigateProcessor {
     this.cooldowns.set(key, Date.now() + seconds * 1000);
   }
 
-  private async runAnalysis(watcher: Watcher, review: FrigateReviewData): Promise<void> {
+  private async runAnalysis(watcher: Watcher, review: FrigateReviewData, analysisService: AnalysisEventService): Promise<void> {
     const provider = watcher.aiProvider ?? await this.getDefaultProvider();
     if (!provider) {
       console.warn(`[FrigateProcessor] No AI provider for watcher "${watcher.name}", skipping`);
@@ -86,7 +86,7 @@ export class FrigateProcessor {
     const mediaUrl = this.getMediaUrl(review, watcher.analysisType);
     const mediaBase64 = mediaUrl ? await this.fetchMediaAsBase64(mediaUrl, watcher.analysisType) : undefined;
 
-    const event = await this.analysisService.create({
+    const event = await analysisService.create({
       watcher,
       frigateEventId: review.data.detections[0] ?? review.id,
       camera: review.camera,
@@ -98,20 +98,20 @@ export class FrigateProcessor {
       mediaPath: mediaUrl ?? undefined,
     });
 
-    this.analyze(event.guid, provider, prompt, mediaBase64).catch(err => {
+    this.analyze(event.guid, provider, prompt, mediaBase64, analysisService).catch(err => {
       console.error(`[FrigateProcessor] Analysis failed for event ${event.guid}:`, err);
     });
   }
 
-  private async analyze(eventGuid: string, provider: AiProvider, prompt: string, mediaBase64: string | undefined): Promise<void> {
+  private async analyze(eventGuid: string, provider: AiProvider, prompt: string, mediaBase64: string | undefined, analysisService: AnalysisEventService): Promise<void> {
     const startTime = Date.now();
 
     try {
-      await this.analysisService.update(eventGuid, { status: AnalysisStatus.PROCESSING });
+      await analysisService.update(eventGuid, { status: AnalysisStatus.PROCESSING });
 
       const response = await this.callAiProvider(provider, prompt, mediaBase64);
 
-      await this.analysisService.update(eventGuid, {
+      await analysisService.update(eventGuid, {
         status: AnalysisStatus.COMPLETED,
         aiResponse: response,
         processingTimeMs: Date.now() - startTime,
@@ -119,7 +119,7 @@ export class FrigateProcessor {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
-      await this.analysisService.update(eventGuid, {
+      await analysisService.update(eventGuid, {
         status: AnalysisStatus.FAILED,
         error: errorMessage,
         processingTimeMs: Date.now() - startTime,

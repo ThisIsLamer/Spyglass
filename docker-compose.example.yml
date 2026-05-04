@@ -1,0 +1,49 @@
+services:
+  backend:
+    build: ./back
+    container_name: spyglass-backend
+    restart: unless-stopped
+    ports:
+      - "3017:3017"
+    environment:
+      APP_PORT: 3017
+      APP_HOST: 0.0.0.0
+      APP_PASSWORD_PAPER: "change-me-random-string"
+      APP_JWT_SECRET: "change-me-long-random-secret-key"
+      APP_CORS_ORIGIN: "http://localhost:3018"
+      DATABASE_SQL_URL: "mysql://spyglass:spyglass@mariadb:3306/spyglass"
+      FRIGATE_MQTT_URL: "mqtt://frigate-mqtt:1883"
+      FRIGATE_TOPIC_PREFIX: "frigate"
+      FRIGATE_API_URL: "http://frigate:5000"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  frontend:
+    build: ./front
+    container_name: spyglass-frontend
+    restart: unless-stopped
+    ports:
+      - "3018:80"
+    depends_on:
+      - backend
+
+  mariadb:
+    image: mariadb:11
+    container_name: spyglass-mariadb
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: spyglass
+      MARIADB_USER: spyglass
+      MARIADB_PASSWORD: spyglass
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mariadb_data:
