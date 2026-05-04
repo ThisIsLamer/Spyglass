@@ -75,6 +75,8 @@ export default {
     hoursAgo: 'ч назад',
     rawJson: 'Сырой JSON ответ',
     notFound: 'Событие не найдено',
+    exitScene: 'Посетители покидают объект — проверки неприменимы',
+    notApplicable: 'Неприменимо',
   },
   providers: {
     title: 'AI Провайдеры',

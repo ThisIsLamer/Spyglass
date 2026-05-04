@@ -75,6 +75,8 @@ export default {
     hoursAgo: 'h ago',
     rawJson: 'Raw JSON response',
     notFound: 'Event not found',
+    exitScene: 'Visitors are leaving — security checks not applicable',
+    notApplicable: 'Not applicable',
   },
   providers: {
     title: 'AI Providers',

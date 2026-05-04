@@ -160,12 +160,12 @@
 </template>
 
 <script lang="ts" setup>
-  import { computed, onMounted, ref } from 'vue'
+  import { computed, onMounted, onUnmounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { frigateApi, type FrigateCamera } from '@/api/frigate'
   import { type AiProvider, providersApi } from '@/api/providers'
   import { type Watcher, watchersApi } from '@/api/watchers'
-  import { useSse } from '@/composables/useSse'
+  import { subscribeSse } from '@/composables/useSse'
   import { useAuthStore } from '@/stores/auth'
 
   const { t } = useI18n()
@@ -337,25 +337,32 @@
 
   onMounted(loadAll)
 
-  useSse('watcher.created', data => {
+  const unsubCreated = subscribeSse('watcher.created', data => {
     watchers.value.push(data as Watcher)
   })
 
-  useSse('watcher.updated', data => {
+  const unsubUpdated = subscribeSse('watcher.updated', data => {
     const updated = data as Watcher
     const idx = watchers.value.findIndex(w => w.guid === updated.guid)
     if (idx !== -1) watchers.value[idx] = updated
   })
 
-  useSse('watcher.deleted', data => {
+  const unsubDeleted = subscribeSse('watcher.deleted', data => {
     const deleted = data as Watcher
     watchers.value = watchers.value.filter(w => w.guid !== deleted.guid)
   })
 
-  useSse('watcher.toggled', data => {
+  const unsubToggled = subscribeSse('watcher.toggled', data => {
     const toggled = data as Watcher
     const idx = watchers.value.findIndex(w => w.guid === toggled.guid)
     if (idx !== -1) watchers.value[idx] = toggled
+  })
+
+  onUnmounted(() => {
+    unsubCreated()
+    unsubUpdated()
+    unsubDeleted()
+    unsubToggled()
   })
 </script>
 

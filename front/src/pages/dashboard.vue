@@ -117,12 +117,12 @@
 </template>
 
 <script lang="ts" setup>
-  import { onMounted, ref } from 'vue'
+  import { onMounted, onUnmounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { analysisApi, type AnalysisEvent, getThumbnailUrl } from '@/api/analysis'
   import { frigateApi } from '@/api/frigate'
   import { watchersApi } from '@/api/watchers'
-  import { useSse } from '@/composables/useSse'
+  import { subscribeSse } from '@/composables/useSse'
 
   const { t, locale } = useI18n()
 
@@ -141,15 +141,23 @@
     loading.value = false
   })
 
-  useSse('analysis.created', data => {
-    recentEvents.value.unshift(data as AnalysisEvent)
-    if (recentEvents.value.length > 5) recentEvents.value.pop()
+  const unsubCreated = subscribeSse('analysis.created', data => {
+    const created = data as AnalysisEvent
+    if (!recentEvents.value.some(e => e.guid === created.guid)) {
+      recentEvents.value.unshift(created)
+      if (recentEvents.value.length > 5) recentEvents.value.pop()
+    }
   })
 
-  useSse('analysis.updated', data => {
+  const unsubUpdated = subscribeSse('analysis.updated', data => {
     const updated = data as AnalysisEvent
     const idx = recentEvents.value.findIndex(e => e.guid === updated.guid)
     if (idx !== -1) recentEvents.value[idx] = updated
+  })
+
+  onUnmounted(() => {
+    unsubCreated()
+    unsubUpdated()
   })
 
   async function loadEvents () {

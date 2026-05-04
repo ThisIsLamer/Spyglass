@@ -73,6 +73,12 @@
 
       <!-- Completed: AI Analysis -->
       <section v-if="event.aiResponse && event.status === 'completed'" class="event-detail__analysis">
+        <!-- Exit scene banner -->
+        <div v-if="isExitScene" class="analysis-exit-banner">
+          <v-icon icon="mdi-exit-run" size="18" />
+          <span>{{ t('events.exitScene') }}</span>
+        </div>
+
         <!-- Summary -->
         <div v-if="summary" class="analysis-summary">
           <p>{{ summary }}</p>
@@ -93,18 +99,20 @@
             :key="check.key"
             class="indicator-item"
             :class="{
-              'indicator-item--positive': check.valid,
-              'indicator-item--negative': !check.valid,
+              'indicator-item--positive': check.valid === true,
+              'indicator-item--negative': check.valid === false,
+              'indicator-item--na': check.valid === null,
             }"
           >
             <v-icon
-              :icon="check.valid ? 'mdi-check-circle' : 'mdi-close-circle'"
+              :icon="check.valid === true ? 'mdi-check-circle' : check.valid === false ? 'mdi-close-circle' : 'mdi-minus-circle'"
               size="20"
             />
 
             <div class="indicator-item__content">
               <span class="indicator-item__label">{{ check.label }}</span>
               <span v-if="check.message" class="indicator-item__details">{{ check.message }}</span>
+              <span v-else-if="check.valid === null" class="indicator-item__details">{{ t('events.notApplicable') }}</span>
             </div>
           </div>
         </div>
@@ -186,11 +194,11 @@
 </template>
 
 <script lang="ts" setup>
-  import { computed, onMounted, ref } from 'vue'
+  import { computed, onMounted, onUnmounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRoute, useRouter } from 'vue-router'
   import { analysisApi, type AnalysisEvent, getClipUrl, getSnapshotUrl } from '@/api/analysis'
-  import { useSse } from '@/composables/useSse'
+  import { subscribeSse } from '@/composables/useSse'
   import { useAuthStore } from '@/stores/auth'
 
   const { t, locale } = useI18n()
@@ -212,7 +220,7 @@
     loading.value = false
   })
 
-  useSse('analysis.updated', data => {
+  const unsubUpdated = subscribeSse('analysis.updated', data => {
     const updated = data as AnalysisEvent
     if (event.value && updated.guid === event.value.guid) {
       event.value = updated
@@ -220,11 +228,16 @@
     }
   })
 
-  useSse('analysis.created', data => {
+  const unsubCreated = subscribeSse('analysis.created', data => {
     const created = data as AnalysisEvent
     if (event.value && created.guid === event.value.guid) {
       event.value = created
     }
+  })
+
+  onUnmounted(() => {
+    unsubUpdated()
+    unsubCreated()
   })
 
   const lang = computed(() => locale.value === 'ru' ? 'ru' : 'en')
@@ -232,7 +245,7 @@
   interface AiCheck {
     key: string
     label: Record<string, string>
-    valid: boolean
+    valid: boolean | null
     message: Record<string, string>
   }
 
@@ -241,6 +254,14 @@
     count: number
     message: Record<string, string>
   }
+
+  const sceneDirection = computed(() => {
+    const response = event.value?.aiResponse
+    if (!response) return null
+    return (response.scene_direction as string | undefined) ?? null
+  })
+
+  const isExitScene = computed(() => sceneDirection.value === 'exit')
 
   const checks = computed(() => {
     const response = event.value?.aiResponse
@@ -442,6 +463,20 @@
   gap: 14px;
 }
 
+.analysis-exit-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(100, 116, 139, 0.1);
+  border: 1px solid rgba(100, 116, 139, 0.25);
+  border-radius: 10px;
+  font-size: 13px;
+  color: rgba(230, 237, 243, 0.6);
+
+  .v-icon { color: rgba(230, 237, 243, 0.4); }
+}
+
 .analysis-summary {
   padding: 14px 16px;
   background: rgba(22, 27, 34, 0.6);
@@ -509,6 +544,14 @@
     background: rgba(248, 81, 73, 0.04);
 
     .v-icon { color: rgb(var(--v-theme-error)); }
+  }
+
+  &--na {
+    border-color: rgba(48, 54, 61, 0.3);
+    background: rgba(22, 27, 34, 0.3);
+    opacity: 0.6;
+
+    .v-icon { color: rgba(230, 237, 243, 0.3); }
   }
 }
 

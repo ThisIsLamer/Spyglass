@@ -110,10 +110,10 @@
 </template>
 
 <script lang="ts" setup>
-  import { onMounted, ref } from 'vue'
+  import { onMounted, onUnmounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { type User, usersApi } from '@/api/users'
-  import { useSse } from '@/composables/useSse'
+  import { subscribeSse } from '@/composables/useSse'
   import { useAuthStore } from '@/stores/auth'
 
   const { t } = useI18n()
@@ -218,14 +218,19 @@
 
   onMounted(loadUsers)
 
-  useSse('user.created', data => {
+  const unsubCreated = subscribeSse('user.created', data => {
     users.value.push(data as User)
   })
 
-  useSse('user.updated', data => {
+  const unsubUpdated = subscribeSse('user.updated', data => {
     const updated = data as User
     const idx = users.value.findIndex(u => u.guid === updated.guid)
     if (idx !== -1) users.value[idx] = updated
+  })
+
+  onUnmounted(() => {
+    unsubCreated()
+    unsubUpdated()
   })
 </script>
 

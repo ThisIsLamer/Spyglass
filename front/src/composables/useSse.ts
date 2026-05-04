@@ -1,11 +1,12 @@
-import { onUnmounted, ref } from 'vue'
+import { ref } from 'vue'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
 type SseHandler = (data: unknown) => void
 
-const handlers = new Map<string, Set<SseHandler>>()
+const globalHandlers = new Map<string, Set<SseHandler>>()
 let eventSource: EventSource | null = null
+const registeredEvents = new Set<string>()
 const connected = ref(false)
 
 function connect () {
@@ -26,35 +27,23 @@ function connect () {
   eventSource.addEventListener('connected', () => {
     connected.value = true
   })
-
-  for (const eventName of handlers.keys()) {
-    registerListener(eventName)
-  }
 }
 
-function disconnect () {
-  if (!eventSource) {
+function addEventSourceListener (eventName: string) {
+  if (!eventSource || registeredEvents.has(eventName)) {
     return
   }
-  eventSource.close()
-  eventSource = null
-  connected.value = false
-}
-
-function registerListener (eventName: string) {
-  if (!eventSource) {
-    return
-  }
+  registeredEvents.add(eventName)
 
   eventSource.addEventListener(eventName, (e: MessageEvent) => {
-    const eventHandlers = handlers.get(eventName)
-    if (!eventHandlers) {
+    const handlers = globalHandlers.get(eventName)
+    if (!handlers || handlers.size === 0) {
       return
     }
 
     try {
       const data = JSON.parse(e.data)
-      for (const handler of eventHandlers) {
+      for (const handler of handlers) {
         handler(data)
       }
     } catch {
@@ -67,22 +56,19 @@ export function initSse () {
   connect()
 }
 
-export function useSse (eventName: string, handler: SseHandler) {
-  if (!handlers.has(eventName)) {
-    handlers.set(eventName, new Set())
-    if (eventSource) {
-      registerListener(eventName)
-    }
+export function subscribeSse (eventName: string, handler: SseHandler): () => void {
+  if (!globalHandlers.has(eventName)) {
+    globalHandlers.set(eventName, new Set())
   }
 
-  handlers.get(eventName)!.add(handler)
+  globalHandlers.get(eventName)!.add(handler)
+  addEventSourceListener(eventName)
 
-  onUnmounted(() => {
-    handlers.get(eventName)?.delete(handler)
-    if (handlers.get(eventName)?.size === 0) {
-      handlers.delete(eventName)
-    }
-  })
+  return () => {
+    globalHandlers.get(eventName)?.delete(handler)
+  }
+}
 
-  return { connected }
+export function useSseConnected () {
+  return connected
 }
