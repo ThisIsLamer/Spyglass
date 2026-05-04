@@ -136,10 +136,13 @@
       <section v-else-if="event.status === 'failed'" class="event-detail__state event-detail__state--error">
         <v-icon color="error" icon="mdi-alert-circle-outline" size="32" />
         <p>{{ event.error || t('events.failed') }}</p>
+      </section>
 
+      <!-- Retry button (any status, admin only) -->
+      <div v-if="auth.isAdmin" class="event-detail__actions">
         <v-btn
-          v-if="auth.isAdmin"
           color="warning"
+          :disabled="event.status === 'processing' || event.status === 'pending'"
           :loading="retrying"
           prepend-icon="mdi-refresh"
           size="small"
@@ -148,7 +151,7 @@
         >
           {{ t('events.retry') }}
         </v-btn>
-      </section>
+      </div>
 
       <!-- Info -->
       <div class="event-detail__info-row">
@@ -187,6 +190,7 @@
   import { useI18n } from 'vue-i18n'
   import { useRoute, useRouter } from 'vue-router'
   import { analysisApi, type AnalysisEvent, getClipUrl, getSnapshotUrl } from '@/api/analysis'
+  import { useSse } from '@/composables/useSse'
   import { useAuthStore } from '@/stores/auth'
 
   const { t, locale } = useI18n()
@@ -206,6 +210,21 @@
       event.value = result.data
     }
     loading.value = false
+  })
+
+  useSse('analysis.updated', data => {
+    const updated = data as AnalysisEvent
+    if (event.value && updated.guid === event.value.guid) {
+      event.value = updated
+      retrying.value = false
+    }
+  })
+
+  useSse('analysis.created', data => {
+    const created = data as AnalysisEvent
+    if (event.value && created.guid === event.value.guid) {
+      event.value = created
+    }
   })
 
   const lang = computed(() => locale.value === 'ru' ? 'ru' : 'en')
@@ -557,6 +576,11 @@
   color: rgba(230, 237, 243, 0.6);
 
   &--error { border-color: rgba(248, 81, 73, 0.2); }
+}
+
+.event-detail__actions {
+  display: flex;
+  gap: 8px;
 }
 
 .event-detail__info-row {

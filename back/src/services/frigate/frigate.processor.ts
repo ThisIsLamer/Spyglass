@@ -98,18 +98,18 @@ export class FrigateProcessor {
       mediaPath: mediaUrl ?? undefined,
     });
 
-    this.analyze(event.guid, provider, prompt, mediaBase64, analysisService).catch(err => {
+    this.analyze(event.guid, provider, prompt, mediaBase64, analysisService, watcher.analysisType).catch(err => {
       console.error(`[FrigateProcessor] Analysis failed for event ${event.guid}:`, err);
     });
   }
 
-  private async analyze(eventGuid: string, provider: AiProvider, prompt: string, mediaBase64: string | undefined, analysisService: AnalysisEventService): Promise<void> {
+  private async analyze(eventGuid: string, provider: AiProvider, prompt: string, mediaBase64: string | undefined, analysisService: AnalysisEventService, analysisType: string): Promise<void> {
     const startTime = Date.now();
 
     try {
       await analysisService.update(eventGuid, { status: AnalysisStatus.PROCESSING });
 
-      const response = await this.callAiProvider(provider, prompt, mediaBase64);
+      const response = await this.callAiProvider(provider, prompt, mediaBase64, analysisType);
 
       await analysisService.update(eventGuid, {
         status: AnalysisStatus.COMPLETED,
@@ -127,15 +127,17 @@ export class FrigateProcessor {
     }
   }
 
-  private async callAiProvider(provider: AiProvider, prompt: string, mediaBase64: string | undefined): Promise<Record<string, unknown>> {
+  private async callAiProvider(provider: AiProvider, prompt: string, mediaBase64: string | undefined, analysisType: string): Promise<Record<string, unknown>> {
     const messages: Array<Record<string, unknown>> = [];
 
     if (mediaBase64) {
+      const mediaType = analysisType === 'video_clip' ? 'video_url' : 'image_url';
+
       messages.push({
         role: 'user',
         content: [
           { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: mediaBase64 } },
+          { type: mediaType, [mediaType]: { url: mediaBase64 } },
         ],
       });
     } else {
@@ -154,6 +156,7 @@ export class FrigateProcessor {
         model: provider.model,
         messages,
         response_format: { type: 'json_object' },
+        chat_template_kwargs: { enable_thinking: false },
       }),
     });
 

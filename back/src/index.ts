@@ -13,6 +13,8 @@ const server = fastify({ logger: true });
 server.register(cors, {
   origin: GLOBAL_CONFIG.APP.CORS_ORIGIN,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type'],
 });
 
 server.register(cookie);

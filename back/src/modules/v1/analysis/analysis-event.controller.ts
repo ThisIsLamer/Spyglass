@@ -4,6 +4,7 @@ import { z } from "zod";
 import { AnalysisStatus } from "./analysis-event.entity.js";
 import { AnalysisEventPresenter } from "./analysis-event.presenter.js";
 import { AnalysisEventService } from "./analysis-event.service.js";
+import { AnalysisRetryService } from "./analysis-retry.service.js";
 
 const guidParams = z.object({
   guid: z.string().uuid(),
@@ -12,9 +13,9 @@ const guidParams = z.object({
 type GuidParams = z.infer<typeof guidParams>;
 
 const listQuery = z.object({
-  watcherGuid: z.uuid().optional(),
+  watcherGuid: z.string().uuid().optional(),
   camera: z.string().optional(),
-  status: z.enum(AnalysisStatus).optional(),
+  status: z.nativeEnum(AnalysisStatus).optional(),
 });
 
 type ListQuery = z.infer<typeof listQuery>;
@@ -22,6 +23,7 @@ type ListQuery = z.infer<typeof listQuery>;
 @Controller('/analysis')
 export class AnalysisEventController {
   private analysisService = new AnalysisEventService();
+  private retryService = new AnalysisRetryService();
 
   @Get('/')
   @ValidateQuery(listQuery)
@@ -52,14 +54,9 @@ export class AnalysisEventController {
       return { success: false, message: 'Analysis event not found' };
     }
 
-    await this.analysisService.update(event.guid, {
-      status: AnalysisStatus.PENDING,
-      aiResponse: null,
-      error: undefined,
-      processingTimeMs: undefined,
+    this.retryService.retry(event.guid).catch((err: Error) => {
+      console.error(`[AnalysisRetry] Failed to retry ${event.guid}:`, err);
     });
-
-    // TODO: отправить событие в очередь на повторную обработку
 
     return { success: true, data: AnalysisEventPresenter.present(event) };
   }

@@ -113,6 +113,7 @@
   import { onMounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { type AiProvider, providersApi } from '@/api/providers'
+  import { useSse } from '@/composables/useSse'
   import { useAuthStore } from '@/stores/auth'
 
   const { t } = useI18n()
@@ -224,6 +225,21 @@
   }
 
   onMounted(loadProviders)
+
+  useSse('ai-provider.created', data => {
+    providers.value.push(data as AiProvider)
+  })
+
+  useSse('ai-provider.updated', data => {
+    const updated = data as AiProvider
+    const idx = providers.value.findIndex(p => p.guid === updated.guid)
+    if (idx !== -1) providers.value[idx] = updated
+  })
+
+  useSse('ai-provider.deleted', data => {
+    const deleted = data as AiProvider
+    providers.value = providers.value.filter(p => p.guid !== deleted.guid)
+  })
 </script>
 
 <style lang="scss" scoped>

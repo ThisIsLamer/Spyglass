@@ -122,6 +122,7 @@
   import { analysisApi, type AnalysisEvent, getThumbnailUrl } from '@/api/analysis'
   import { frigateApi } from '@/api/frigate'
   import { watchersApi } from '@/api/watchers'
+  import { useSse } from '@/composables/useSse'
 
   const { t, locale } = useI18n()
 
@@ -138,6 +139,17 @@
   onMounted(async () => {
     await Promise.all([loadEvents(), loadStats(), loadFrigateStatus()])
     loading.value = false
+  })
+
+  useSse('analysis.created', data => {
+    recentEvents.value.unshift(data as AnalysisEvent)
+    if (recentEvents.value.length > 5) recentEvents.value.pop()
+  })
+
+  useSse('analysis.updated', data => {
+    const updated = data as AnalysisEvent
+    const idx = recentEvents.value.findIndex(e => e.guid === updated.guid)
+    if (idx !== -1) recentEvents.value[idx] = updated
   })
 
   async function loadEvents () {

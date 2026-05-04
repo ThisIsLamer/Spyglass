@@ -114,6 +114,7 @@
   import { computed, onMounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { analysisApi, type AnalysisEvent, getThumbnailUrl } from '@/api/analysis'
+  import { useSse } from '@/composables/useSse'
 
   const { t, locale } = useI18n()
 
@@ -131,6 +132,16 @@
 
   onMounted(async () => {
     await loadEvents()
+  })
+
+  useSse('analysis.created', data => {
+    events.value.unshift(data as AnalysisEvent)
+  })
+
+  useSse('analysis.updated', data => {
+    const updated = data as AnalysisEvent
+    const idx = events.value.findIndex(e => e.guid === updated.guid)
+    if (idx !== -1) events.value[idx] = updated
   })
 
   async function loadEvents () {

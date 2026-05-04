@@ -22,6 +22,11 @@ async function bootstrap () {
 
   await auth.init()
 
+  if (auth.isAuthenticated) {
+    const { initSse } = await import('@/composables/useSse')
+    initSse()
+  }
+
   // Hide splash
   const splash = document.querySelector('#splash')
   if (splash) {
