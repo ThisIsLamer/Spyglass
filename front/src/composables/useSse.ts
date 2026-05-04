@@ -1,6 +1,6 @@
 import { onUnmounted, ref } from 'vue'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3017/api/v1'
+const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
 type SseHandler = (data: unknown) => void
 

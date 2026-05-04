@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3017/api/v1'
+const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
 class ApiClient {
   private baseUrl: string
@@ -17,11 +17,6 @@ class ApiClient {
         credentials: 'include',
         body: body ? JSON.stringify(body) : undefined,
       })
-
-      if (res.status === 401) {
-        window.location.href = '/login'
-        return { success: false, message: 'Unauthorized' } as T
-      }
 
       if (!res.ok) {
         const data = await res.json().catch(() => null)

@@ -44,7 +44,7 @@ export interface AnalysisFilters {
   status?: string
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3017/api/v1'
+const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
 export function getThumbnailUrl (frigateEventId: string) {
   return `${API_URL}/frigate/events/${frigateEventId}/thumbnail`
