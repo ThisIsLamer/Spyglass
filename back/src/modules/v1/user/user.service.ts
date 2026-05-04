@@ -80,20 +80,37 @@ export class UserService {
     return user;
   }
 
+  async setLanguage(userGuid: string, language: string) {
+    const user = await this.em.findOne(User, { guid: userGuid });
+    if (!user) return null;
+
+    user.language = language;
+    await this.em.flush();
+
+    eventBus.emit({
+      event: 'user.updated',
+      data: UserPresenter.present(user),
+      target: { userGuids: [user.guid] },
+    });
+
+    return user;
+  }
+
   async initUsers() {
-    const admins = await this.em.find(User, { role: UserRole.ADMIN });
+    const em = orm.em.fork();
+    const admins = await em.find(User, { role: UserRole.ADMIN });
     if (admins.length > 0) return;
 
     const password = generatePassword();
 
-    this.em.create(User, {
+    em.create(User, {
       username: 'admin',
       passwordHash: await PasswordCrypto.hash(password),
       displayName: 'Admin',
       role: UserRole.ADMIN,
     });
 
-    await this.em.flush();
+    await em.flush();
 
     logBlock({
       title: 'Admin account created',

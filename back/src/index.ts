@@ -1,4 +1,6 @@
 import fastify from 'fastify';
+import cors from '@fastify/cors';
+import cookie from '@fastify/cookie';
 import { registerModule } from './core/decorators/index.js';
 import { preHandler } from './core/hooks/handler.js';
 import { initializeDatabase, orm, RequestContext } from './database/index.js';
@@ -7,6 +9,13 @@ import { UserService } from './modules/v1/user/user.service.js';
 import { frigateClient } from './services/frigate/frigate.client.js';
 
 const server = fastify({ logger: true });
+
+server.register(cors, {
+  origin: GLOBAL_CONFIG.APP.CORS_ORIGIN,
+  credentials: true,
+});
+
+server.register(cookie);
 
 server.addHook('preHandler', preHandler);
 
@@ -31,7 +40,7 @@ const start = async () => {
 
     await loadModules();
 
-    await frigateClient.connect();
+    frigateClient.connect();
 
     await server.listen({ 
       port: GLOBAL_CONFIG.APP.PORT, 

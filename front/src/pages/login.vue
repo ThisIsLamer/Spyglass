@@ -46,10 +46,12 @@
 <script lang="ts" setup>
   import { ref } from 'vue'
   import { useI18n } from 'vue-i18n'
-  import { useRouter } from 'vue-router'
+  import { useRoute, useRouter } from 'vue-router'
+  import { authApi } from '@/api/auth'
   import { useAuthStore } from '@/stores/auth'
 
   const { t } = useI18n()
+  const route = useRoute()
   const router = useRouter()
   const auth = useAuthStore()
 
@@ -61,27 +63,25 @@
 
   async function handleLogin () {
     error.value = ''
+
+    if (!username.value || !password.value) {
+      error.value = t('auth.loginError')
+      return
+    }
+
     loading.value = true
 
-    try {
-      // TODO: Replace with actual API call
-      // Temporary mock login for UI development
-      if (username.value && password.value) {
-        auth.setAuth('mock-token', {
-          guid: 'mock-guid',
-          username: username.value,
-          displayName: username.value,
-          role: 'admin',
-        })
-        router.push({ name: 'dashboard' })
-      } else {
-        error.value = t('auth.loginError')
-      }
-    } catch {
-      error.value = t('auth.loginError')
-    } finally {
-      loading.value = false
+    const res = await authApi.login(username.value, password.value)
+
+    if (res.success) {
+      auth.setUser(res.data.user)
+      const redirect = route.query.redirect as string | undefined
+      router.push(redirect || '/')
+    } else {
+      error.value = res.message || t('auth.loginError')
     }
+
+    loading.value = false
   }
 </script>
 

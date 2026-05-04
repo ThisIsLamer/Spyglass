@@ -23,13 +23,19 @@ type CreateDto = z.infer<typeof createSchema>;
 
 const updateSchema = z.object({
   displayName: z.string().max(128).optional(),
-  role: z.nativeEnum(UserRole).optional(),
+  role: z.enum(UserRole).optional(),
   language: z.string().max(5).optional(),
   password: z.string().min(8).max(128).optional(),
   isActive: z.boolean().optional(),
 });
 
 type UpdateDto = z.infer<typeof updateSchema>;
+
+const languageSchema = z.object({
+  language: z.string().min(2).max(5),
+});
+
+type LanguageDto = z.infer<typeof languageSchema>;
 
 @Controller('/users')
 export class UserController {
@@ -72,6 +78,18 @@ export class UserController {
   @ValidateBody(updateSchema)
   async update(request: FastifyRequest<{ Params: GuidParams; Body: UpdateDto }>) {
     const user = await this.userService.update(request.params.guid, request.body);
+
+    if (!user) {
+      return { success: false, message: 'User not found' };
+    }
+
+    return { success: true, data: UserPresenter.present(user) };
+  }
+
+  @Post('/me/language')
+  @ValidateBody(languageSchema)
+  async setLanguage(request: FastifyRequest<{ Body: LanguageDto }>) {
+    const user = await this.userService.setLanguage(request.user.guid, request.body.language);
 
     if (!user) {
       return { success: false, message: 'User not found' };

@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -55,22 +54,25 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach(to => {
-  const auth = useAuthStore()
-
+router.beforeEach(async to => {
   if (to.meta.public) {
     return true
   }
 
-  if (!auth.isAuthenticated) {
-    return { name: 'login' }
+  const { useAuthStore } = await import('@/stores/auth')
+  const auth = useAuthStore()
+
+  if (!auth.ready) {
+    await auth.init()
   }
 
-  if (to.meta.roles && Array.isArray(to.meta.roles)) {
-    const userRole = auth.user?.role
-    if (!userRole || !to.meta.roles.includes(userRole)) {
-      return { name: 'dashboard' }
-    }
+  if (!auth.isAuthenticated) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+
+  const requiredRoles = to.meta.roles as string[] | undefined
+  if (requiredRoles && !requiredRoles.includes(auth.user?.role ?? '')) {
+    return { name: 'dashboard' }
   }
 
   return true

@@ -4,39 +4,34 @@ import { Watcher } from '#src/modules/v1/watcher/watcher.entity.js';
 import { AiProvider } from '#src/modules/v1/ai-provider/ai-provider.entity.js';
 import { AnalysisEventService } from '#src/modules/v1/analysis/analysis-event.service.js';
 import { AnalysisStatus } from '#src/modules/v1/analysis/analysis-event.entity.js';
-import type { FrigateReviewEvent } from './frigate.handler.js';
+import type { FrigateReviewData } from './frigate.handler.js';
 
 const { API_URL } = GLOBAL_CONFIG.FRIGATE;
-
-interface ReviewData {
-  id: string;
-  camera: string;
-  start_time: number;
-  end_time: number | null;
-  severity: string;
-  data: {
-    detections: string[];
-    objects: string[];
-    sub_labels: string[];
-    zones: string[];
-    audio: string[];
-  };
-}
 
 export class FrigateProcessor {
   private analysisService = new AnalysisEventService();
   private cooldowns = new Map<string, number>();
 
-  async processReview(review: ReviewData): Promise<void> {
+  async processReview(review: FrigateReviewData): Promise<void> {
     const em = orm.em.fork();
 
     try {
       const watchers = await em.find(Watcher, { enabled: true }, { populate: ['aiProvider'] });
 
-      for (const watcher of watchers) {
-        if (!this.matchesWatcher(watcher, review)) continue;
-        if (this.isOnCooldown(watcher.guid, review.camera)) continue;
+      console.log(`[FrigateProcessor] Review received: camera=${review.camera}, objects=${review.data.objects.join(',')}, zones=${review.data.zones.join(',') || 'none'}`);
+      console.log(`[FrigateProcessor] Active watchers: ${watchers.length}`);
 
+      for (const watcher of watchers) {
+        if (!this.matchesWatcher(watcher, review)) {
+          console.log(`[FrigateProcessor] Watcher "${watcher.name}" does not match (cameras: ${watcher.cameras.join(',')}, labels: ${watcher.objectLabels.join(',') || 'any'})`);
+          continue;
+        }
+        if (this.isOnCooldown(watcher.guid, review.camera)) {
+          console.log(`[FrigateProcessor] Watcher "${watcher.name}" is on cooldown`);
+          continue;
+        }
+
+        console.log(`[FrigateProcessor] Watcher "${watcher.name}" matched, starting analysis`);
         this.setCooldown(watcher.guid, review.camera, watcher.cooldownSeconds);
         await this.runAnalysis(watcher, review);
       }
@@ -47,7 +42,7 @@ export class FrigateProcessor {
     }
   }
 
-  private matchesWatcher(watcher: Watcher, review: ReviewData): boolean {
+  private matchesWatcher(watcher: Watcher, review: FrigateReviewData): boolean {
     if (!watcher.cameras.includes(review.camera)) return false;
 
     if (watcher.zones.length > 0) {
@@ -80,7 +75,7 @@ export class FrigateProcessor {
     this.cooldowns.set(key, Date.now() + seconds * 1000);
   }
 
-  private async runAnalysis(watcher: Watcher, review: ReviewData): Promise<void> {
+  private async runAnalysis(watcher: Watcher, review: FrigateReviewData): Promise<void> {
     const provider = watcher.aiProvider ?? await this.getDefaultProvider();
     if (!provider) {
       console.warn(`[FrigateProcessor] No AI provider for watcher "${watcher.name}", skipping`);
@@ -93,7 +88,7 @@ export class FrigateProcessor {
 
     const event = await this.analysisService.create({
       watcher,
-      frigateEventId: review.id,
+      frigateEventId: review.data.detections[0] ?? review.id,
       camera: review.camera,
       prompt,
       aiProviderName: provider.name,
@@ -103,7 +98,9 @@ export class FrigateProcessor {
       mediaPath: mediaUrl ?? undefined,
     });
 
-    this.analyze(event.guid, provider, prompt, mediaBase64);
+    this.analyze(event.guid, provider, prompt, mediaBase64).catch(err => {
+      console.error(`[FrigateProcessor] Analysis failed for event ${event.guid}:`, err);
+    });
   }
 
   private async analyze(eventGuid: string, provider: AiProvider, prompt: string, mediaBase64: string | undefined): Promise<void> {
@@ -188,7 +185,7 @@ export class FrigateProcessor {
     return `data:${mimeType};base64,${base64}`;
   }
 
-  private buildPrompt(template: string, review: ReviewData): string {
+  private buildPrompt(template: string, review: FrigateReviewData): string {
     const duration = review.end_time && review.start_time
       ? Math.round(review.end_time - review.start_time)
       : 0;
@@ -201,13 +198,24 @@ export class FrigateProcessor {
       .replace(/\{\{duration\}\}/g, `${duration}s`);
   }
 
-  private getMediaUrl(review: ReviewData, analysisType: string): string | null {
+  private getMediaUrl(review: FrigateReviewData, analysisType: string): string | null {
+    const detectionId = review.data.detections[0];
+
     if (analysisType === 'video_clip') {
-      return `${API_URL}/api/events/${review.id}/clip.mp4`;
+      if (review.start_time && review.end_time) {
+        return `${API_URL}/api/Entry/start/${review.start_time}/end/${review.end_time}/clip.mp4`;
+      }
+      if (detectionId) {
+        return `${API_URL}/api/events/${detectionId}/clip.mp4`;
+      }
     }
+
     if (analysisType === 'snapshot') {
-      return `${API_URL}/api/events/${review.id}/snapshot.jpg`;
+      if (detectionId) {
+        return `${API_URL}/api/events/${detectionId}/snapshot.jpg`;
+      }
     }
+
     return null;
   }
 

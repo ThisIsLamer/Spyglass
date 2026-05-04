@@ -29,11 +29,6 @@
           <v-icon :icon="sidebarCollapsed ? 'mdi-chevron-right' : 'mdi-chevron-left'" size="22" />
           <span v-if="!sidebarCollapsed" class="app-sidebar__label">{{ sidebarCollapsed ? '' : '' }}</span>
         </button>
-
-        <button class="app-sidebar__item" @click="handleLogout">
-          <v-icon icon="mdi-logout" size="22" />
-          <span v-if="!sidebarCollapsed" class="app-sidebar__label">{{ t('nav.logout') }}</span>
-        </button>
       </div>
     </aside>
 
@@ -115,7 +110,13 @@
     sidebarCollapsed.value = !sidebarCollapsed.value
   }
 
-  function handleLogout () {
+  async function handleLogout () {
+    try {
+      const { authApi } = await import('@/api/auth')
+      await authApi.logout()
+    } catch {
+      // Ignore — we're logging out anyway
+    }
     auth.logout()
     router.push({ name: 'login' })
   }

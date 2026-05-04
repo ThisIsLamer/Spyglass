@@ -16,13 +16,12 @@ export interface RouteMetadata {
 
 const controllerMetadata = new WeakMap<any, string>();
 const publicMetadata = new WeakMap<any, Set<string>>();
-const rolesMetadata = new WeakMap<any, string[]>();
+const rolesMetadata = new WeakMap<any, Map<string, string[]>>();
 const validationMetadata = new WeakMap<any, Map<string, any>>();
 export const routesByClass = new Map<string, RouteMetadata[]>();
-export const methods = new Map<string, RouteMetadata[]>();
 
 export function Controller(prefix: string = '') {
-  return function <T extends new (...args: any[]) => any>(target: T, context: any) {
+  return function <T extends new (...args: any[]) => any>(target: T, _context: any) {
     controllerMetadata.set(target, prefix);
     const tempRoutes = routesByClass.get('temp') || [];
     if (tempRoutes.length > 0) {
@@ -59,21 +58,22 @@ export function Public() {
 
 export function Roles(...args: string[]) {
   return function (target: any, context: ClassMethodDecoratorContext) {
-    const roles = rolesMetadata.get(target) || [];
-    roles.push(...args);
-    rolesMetadata.set(target, roles);
-  }
+    const allRoles = rolesMetadata.get(target) || new Map<string, string[]>();
+    allRoles.set(context.name as string, args);
+    rolesMetadata.set(target, allRoles);
+  };
 }
 
 function createRouteDecorator(method: string, path: string) {
   return function (target: any, context: ClassMethodDecoratorContext) {
-    const className = 'temp';
-    const routes = routesByClass.get(className) || [];
+    const routes = routesByClass.get('temp') || [];
     const publicMethods = publicMetadata.get(target) || new Set();
     const validation = validationMetadata.get(target) || new Map();
+    const allRoles = rolesMetadata.get(target) || new Map<string, string[]>();
+
     const isPublic = publicMethods.has(context.name as string);
     const methodValidation = validation.get(context.name as string);
-    const roles = rolesMetadata.get(target) || [];
+    const roles = allRoles.get(context.name as string) || [];
 
     routes.push({
       method,
@@ -81,10 +81,10 @@ function createRouteDecorator(method: string, path: string) {
       handler: context.name as string,
       isPublic,
       roles,
-      validation: methodValidation
+      validation: methodValidation,
     });
-    
-    routesByClass.set(className, routes);
+
+    routesByClass.set('temp', routes);
   };
 }
 
@@ -120,42 +120,42 @@ export function ValidateParams<T extends z.ZodType>(schema: T) {
 
 export { Module, registerModule } from './module.js';
 
+function buildRoute(
+  fastify: FastifyInstance,
+  method: string,
+  url: string,
+  route: RouteMetadata,
+  handler: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>,
+) {
+  fastify.route({
+    method: method as any,
+    url,
+    config: {
+      isPublic: route.isPublic ?? false,
+      roles: route.roles ?? [],
+      validation: route.validation,
+    },
+    handler,
+  });
+}
+
 export function registerController(fastify: FastifyInstance, controller: any, modulePrefix: string = '') {
   const instance = new controller();
   const prefix = controllerMetadata.get(controller) || '';
   const className = controller.name;
   const routes = routesByClass.get(className) || [];
 
-  routes.forEach(route => {
+  for (const route of routes) {
     const controllerPath = prefix + (route.path === '/' ? '' : route.path);
     const fullPath = modulePrefix + controllerPath;
     const handler = instance[route.handler].bind(instance);
 
-    fastify.route({
-      method: route.method as any,
-      url: fullPath,
-      handler: async (request: FastifyRequest, reply: FastifyReply) => {
-        (request as any).isPublic = route.isPublic;
-        (request as any).validation = route.validation;
-        return handler(request, reply);
-      }
-    });
+    buildRoute(fastify, route.method, fullPath, route, handler);
 
     if (route.path === '/') {
-      fastify.route({
-        method: route.method as any,
-        url: fullPath + '/',
-        handler: async (request: FastifyRequest, reply: FastifyReply) => {
-          (request as any).isPublic = route.isPublic;
-          (request as any).validation = route.validation;
-          return handler(request, reply);
-        }
-      });
+      buildRoute(fastify, route.method, fullPath + '/', route, handler);
     }
+  }
 
-    const existingRoutes = methods.get(fullPath) || [];
-    existingRoutes.push(route);
-    methods.set(fullPath, existingRoutes);
-    routesByClass.delete(className)
-  });
+  routesByClass.delete(className);
 }

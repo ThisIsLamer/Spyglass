@@ -1,41 +1,29 @@
 import { FastifyReply, FastifyRequest } from "fastify";
-import { RouteMetadata, methods } from "../decorators/index.js";
-import { ZodError } from "zod";
+import { ZodError, ZodType } from "zod";
 import { TokenService } from "#src/modules/v1/auth/token.service.js";
 import type { IUserGeneric } from "#root/types/api/account.js";
 
 const tokenService = new TokenService();
 
-async function routeHook(request: FastifyRequest, reply: FastifyReply): Promise<RouteMetadata> {
-  let path = request.url.split('?')[0]!;
-  if (path.length > 1 && path.endsWith('/')) {
-    path = path.slice(0, -1);
-  }
-
-  const rawRoute = methods.get(path);
-  if (!rawRoute || !rawRoute.length) {
-    reply.code(404).send({ success: false, message: 'Not Found' });
-    return undefined as never;
-  }
-
-  const route = rawRoute.find(r => r.method === request.method);
-  if (!route) {
-    reply.code(404).send({ success: false, message: 'Not Found' });
-    return undefined as never;
-  }
-
-  return route;
+interface RouteConfig {
+  isPublic?: boolean;
+  roles?: string[];
+  validation?: {
+    body?: ZodType;
+    query?: ZodType;
+    params?: ZodType;
+  };
 }
 
-async function authHook(request: FastifyRequest, reply: FastifyReply, route: RouteMetadata) {
-  if (route.isPublic) return;
+function getRouteConfig(request: FastifyRequest): RouteConfig {
+  return (request.routeOptions?.config ?? {}) as RouteConfig;
+}
 
-  const header = request.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    return reply.code(401).send({ success: false, message: 'Unauthorized' });
-  }
+async function authHook(request: FastifyRequest, reply: FastifyReply) {
+  const { isPublic } = getRouteConfig(request);
+  if (isPublic) return;
 
-  const token = header.slice(7);
+  const token = request.cookies?.token;
   if (!token) {
     return reply.code(401).send({ success: false, message: 'Unauthorized' });
   }
@@ -45,31 +33,32 @@ async function authHook(request: FastifyRequest, reply: FastifyReply, route: Rou
     return reply.code(401).send({ success: false, message: 'Invalid or expired token' });
   }
 
-  const user: IUserGeneric = {
+  request.user = {
     guid: payload.sub,
     username: payload.username,
     role: payload.role,
     createdAt: new Date(),
-  };
-
-  request.user = user;
-  request.userToken = token;
+  } satisfies IUserGeneric;
 }
 
-async function rolesHook(request: FastifyRequest, reply: FastifyReply, route: RouteMetadata) {
-  if (!route.roles || !route.roles.length) return;
+async function rolesHook(request: FastifyRequest, reply: FastifyReply) {
+  const { roles } = getRouteConfig(request);
+  if (!roles || roles.length === 0) return;
 
-  if (!route.roles.some(role => request.user.role === role)) {
+  if (!roles.includes(request.user.role)) {
     return reply.code(403).send({ success: false, message: 'Forbidden' });
   }
 }
 
-async function validationHook(request: FastifyRequest, reply: FastifyReply, route: RouteMetadata) {
-  if (!route.validation) return;
+async function validationHook(request: FastifyRequest, reply: FastifyReply) {
+  const { validation } = getRouteConfig(request);
+  if (!validation) return;
 
-  const validate = (field: 'body' | 'query' | 'params') => {
-    const schema = route.validation![field];
-    if (!schema) return;
+  const fields = ['body', 'query', 'params'] as const;
+
+  for (const field of fields) {
+    const schema = validation[field];
+    if (!schema) continue;
 
     try {
       const source = field === 'body' ? request.body
@@ -78,29 +67,22 @@ async function validationHook(request: FastifyRequest, reply: FastifyReply, rout
 
       const parsed = schema.parse(source);
 
-      if (field === 'body') (request.body as typeof parsed) = parsed;
-      else if (field === 'query') (request.query as typeof parsed) = parsed;
-      else (request.params as typeof parsed) = parsed;
+      if (field === 'body') request.body = parsed;
+      else if (field === 'query') request.query = parsed;
+      else request.params = parsed;
     } catch (err) {
       const issues = (err as ZodError).issues || [{ message: 'Validation failed' }];
-      reply.code(400).send({ success: false, errors: issues });
+      return reply.code(400).send({ success: false, errors: issues });
     }
-  };
-
-  validate('body');
-  validate('query');
-  validate('params');
+  }
 }
 
 export async function preHandler(request: FastifyRequest, reply: FastifyReply) {
-  const route = await routeHook(request, reply);
+  await authHook(request, reply);
   if (reply.sent) return;
 
-  await authHook(request, reply, route);
+  await rolesHook(request, reply);
   if (reply.sent) return;
 
-  await rolesHook(request, reply, route);
-  if (reply.sent) return;
-
-  await validationHook(request, reply, route);
+  await validationHook(request, reply);
 }

@@ -1,13 +1,16 @@
 <template>
   <div class="page-event-detail">
-    <!-- Back button -->
     <button class="back-btn" @click="router.back()">
       <v-icon icon="mdi-arrow-left" size="18" />
       <span>{{ t('events.title') }}</span>
     </button>
 
-    <div v-if="event" class="event-detail">
-      <!-- Media Section -->
+    <div v-if="loading" class="loading-state">
+      <v-progress-circular color="primary" indeterminate size="32" />
+    </div>
+
+    <div v-else-if="event" class="event-detail">
+      <!-- Media -->
       <div
         class="event-detail__media"
         @mouseenter="showVideo = true"
@@ -18,17 +21,17 @@
           v-show="!showVideo"
           :alt="event.camera"
           class="event-detail__image"
-          :src="event.thumbnailUrl"
+          :src="getSnapshotUrl(event.frigateEventId)"
         >
 
         <video
-          v-show="showVideo"
+          v-if="showVideo"
           autoplay
           class="event-detail__video"
           loop
           muted
           playsinline
-          :src="event.videoUrl"
+          :src="getClipUrl(event.frigateEventId)"
         />
 
         <div class="event-detail__media-hint" :class="{ 'event-detail__media-hint--hidden': showVideo }">
@@ -37,7 +40,7 @@
         </div>
       </div>
 
-      <!-- Status & Meta -->
+      <!-- Meta bar -->
       <div class="event-detail__meta-bar">
         <div class="event-detail__meta-left">
           <v-chip :color="getStatusColor(event.status)" size="small" variant="flat">
@@ -48,116 +51,115 @@
             <v-icon icon="mdi-cctv" size="14" />
             {{ event.camera }}
           </span>
+
+          <v-chip v-if="event.label" size="x-small" variant="outlined">
+            {{ event.label }}
+          </v-chip>
+
+          <v-chip v-if="event.zone" size="x-small" variant="outlined">
+            {{ event.zone }}
+          </v-chip>
         </div>
 
         <div class="event-detail__meta-right">
-          <span v-if="event.processingTime" class="event-detail__processing">
+          <span v-if="event.processingTimeMs" class="event-detail__processing">
             <v-icon icon="mdi-timer-outline" size="14" />
-            {{ event.processingTime }}ms
+            {{ event.processingTimeMs }}ms
           </span>
 
-          <span class="event-detail__time">{{ event.time }}</span>
+          <span class="event-detail__time">{{ formatTime(event.createdAt) }}</span>
         </div>
       </div>
 
-      <!-- AI Analysis Results -->
+      <!-- Completed: AI Analysis -->
       <section v-if="event.aiResponse && event.status === 'completed'" class="event-detail__analysis">
         <!-- Summary -->
-        <div class="analysis-summary">
-          <p>{{ event.aiResponse.summary }}</p>
+        <div v-if="summary" class="analysis-summary">
+          <p>{{ summary }}</p>
         </div>
 
-        <!-- Violations Alert -->
-        <div v-if="event.aiResponse.violations?.length" class="analysis-violations">
-          <div class="analysis-violations__header">
-            <v-icon color="error" icon="mdi-alert-circle" size="18" />
-            <span>Нарушения ({{ event.aiResponse.violations.length }})</span>
-          </div>
-
-          <ul class="analysis-violations__list">
-            <li v-for="(violation, idx) in event.aiResponse.violations" :key="idx">
-              {{ violation }}
-            </li>
-          </ul>
+        <!-- Visitor count -->
+        <div v-if="visitorCount" class="analysis-visitors">
+          <v-icon icon="mdi-account-group" size="18" />
+          <span class="analysis-visitors__label">{{ visitorCount.label }}</span>
+          <span class="analysis-visitors__count">{{ visitorCount.count }}</span>
+          <span v-if="visitorCount.message" class="analysis-visitors__message">— {{ visitorCount.message }}</span>
         </div>
 
-        <!-- Indicators Grid -->
-        <div class="analysis-indicators">
+        <!-- Checks -->
+        <div v-if="checks.length > 0" class="analysis-indicators">
           <div
-            v-for="indicator in indicators"
-            :key="indicator.key"
+            v-for="check in checks"
+            :key="check.key"
             class="indicator-item"
             :class="{
-              'indicator-item--positive': indicator.value === true,
-              'indicator-item--negative': indicator.value === false,
+              'indicator-item--positive': check.valid,
+              'indicator-item--negative': !check.valid,
             }"
           >
             <v-icon
-              :icon="indicator.value ? 'mdi-check-circle' : 'mdi-close-circle'"
+              :icon="check.valid ? 'mdi-check-circle' : 'mdi-close-circle'"
               size="20"
             />
 
             <div class="indicator-item__content">
-              <span class="indicator-item__label">{{ indicator.label }}</span>
-              <span v-if="indicator.details" class="indicator-item__details">{{ indicator.details }}</span>
+              <span class="indicator-item__label">{{ check.label }}</span>
+              <span v-if="check.message" class="indicator-item__details">{{ check.message }}</span>
             </div>
           </div>
         </div>
 
-        <!-- Additional Data -->
-        <div v-if="additionalFields.length > 0" class="analysis-extra">
-          <div
-            v-for="field in additionalFields"
-            :key="field.key"
-            class="extra-field"
-          >
-            <span class="extra-field__label">{{ field.key }}</span>
-            <span class="extra-field__value">{{ field.value }}</span>
-          </div>
-        </div>
-
-        <!-- Raw JSON (collapsible) -->
+        <!-- Raw JSON -->
         <details class="analysis-raw">
           <summary class="analysis-raw__toggle">
             <v-icon icon="mdi-code-json" size="16" />
-            Сырой JSON ответ
+            {{ t('events.rawJson') }}
           </summary>
 
           <pre class="analysis-raw__code">{{ JSON.stringify(event.aiResponse, null, 2) }}</pre>
         </details>
       </section>
 
-      <!-- Processing / Failed states -->
+      <!-- Processing -->
       <section v-else-if="event.status === 'processing'" class="event-detail__state">
         <v-progress-circular color="primary" indeterminate size="32" />
         <p>{{ t('events.processing') }}...</p>
       </section>
 
+      <!-- Pending -->
+      <section v-else-if="event.status === 'pending'" class="event-detail__state">
+        <v-icon color="info" icon="mdi-clock-outline" size="32" />
+        <p>{{ t('events.pending') }}</p>
+      </section>
+
+      <!-- Failed -->
       <section v-else-if="event.status === 'failed'" class="event-detail__state event-detail__state--error">
         <v-icon color="error" icon="mdi-alert-circle-outline" size="32" />
-        <p>{{ event.error || 'Ошибка при обработке' }}</p>
+        <p>{{ event.error || t('events.failed') }}</p>
 
         <v-btn
           v-if="auth.isAdmin"
           color="warning"
+          :loading="retrying"
           prepend-icon="mdi-refresh"
           size="small"
           variant="tonal"
+          @click="retryAnalysis"
         >
           {{ t('events.retry') }}
         </v-btn>
       </section>
 
-      <!-- Watcher & Provider Info -->
+      <!-- Info -->
       <div class="event-detail__info-row">
         <div class="info-block">
           <span class="info-block__label">{{ t('events.watcher') }}</span>
-          <span class="info-block__value">{{ event.watcher }}</span>
+          <span class="info-block__value">{{ event.watcher?.name ?? '—' }}</span>
         </div>
 
         <div class="info-block">
           <span class="info-block__label">{{ t('events.aiProvider') }}</span>
-          <span class="info-block__value">{{ event.aiProvider }} / {{ event.aiModel }}</span>
+          <span class="info-block__value">{{ event.aiProviderName }} / {{ event.aiModel }}</span>
         </div>
       </div>
 
@@ -171,21 +173,95 @@
         <pre class="analysis-raw__code analysis-raw__code--prompt">{{ event.prompt }}</pre>
       </details>
     </div>
+
+    <!-- Not found -->
+    <div v-else class="empty-state">
+      <v-icon color="error" icon="mdi-alert-circle-outline" size="48" />
+      <p>{{ t('events.notFound') }}</p>
+    </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-  import { computed, ref } from 'vue'
+  import { computed, onMounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
   import { useRoute, useRouter } from 'vue-router'
+  import { analysisApi, type AnalysisEvent, getClipUrl, getSnapshotUrl } from '@/api/analysis'
   import { useAuthStore } from '@/stores/auth'
 
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const route = useRoute()
   const router = useRouter()
   const auth = useAuthStore()
 
+  const loading = ref(true)
+  const event = ref<AnalysisEvent | null>(null)
   const showVideo = ref(false)
+  const retrying = ref(false)
+
+  onMounted(async () => {
+    const guid = route.params.guid as string
+    const result = await analysisApi.getOne(guid)
+    if (result.success) {
+      event.value = result.data
+    }
+    loading.value = false
+  })
+
+  const lang = computed(() => locale.value === 'ru' ? 'ru' : 'en')
+
+  interface AiCheck {
+    key: string
+    label: Record<string, string>
+    valid: boolean
+    message: Record<string, string>
+  }
+
+  interface AiVisitorCount {
+    label: Record<string, string>
+    count: number
+    message: Record<string, string>
+  }
+
+  const checks = computed(() => {
+    const response = event.value?.aiResponse
+    if (!response) return []
+
+    const raw = response.checks as AiCheck[] | undefined
+    if (!raw || !Array.isArray(raw)) return []
+
+    return raw.map(c => ({
+      key: c.key,
+      label: c.label?.[lang.value] ?? c.label?.en ?? c.key,
+      valid: c.valid,
+      message: c.message?.[lang.value] ?? c.message?.en ?? '',
+    }))
+  })
+
+  const visitorCount = computed(() => {
+    const response = event.value?.aiResponse
+    if (!response) return null
+
+    const raw = response.visitor_count as AiVisitorCount | undefined
+    if (!raw) return null
+
+    return {
+      label: raw.label?.[lang.value] ?? raw.label?.en ?? 'Visitors',
+      count: raw.count,
+      message: raw.message?.[lang.value] ?? raw.message?.en ?? '',
+    }
+  })
+
+  const summary = computed(() => {
+    const response = event.value?.aiResponse
+    if (!response) return null
+
+    const raw = response.summary as Record<string, string> | string | undefined
+    if (!raw) return null
+    if (typeof raw === 'string') return raw
+
+    return raw[lang.value] ?? raw.en ?? null
+  })
 
   function getStatusColor (status: string) {
     const map: Record<string, string> = {
@@ -197,71 +273,32 @@
     return map[status] ?? 'info'
   }
 
-  // Indicator config: which boolean fields to show as indicators
-  const indicatorConfig: Record<string, { label: string, detailsKey?: string }> = {
-    guard_present: { label: 'Охранник на посту', detailsKey: 'guard_description' },
-    bag_inspection_performed: { label: 'Досмотр сумок', detailsKey: 'bag_inspection_details' },
-    person_inspection_performed: { label: 'Досмотр посетителей', detailsKey: 'person_inspection_details' },
-    visitors_detected: { label: 'Посетители обнаружены' },
+  function formatTime (dateStr: string) {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+    if (diff < 60) return t('events.justNow')
+    if (diff < 3600) return `${Math.floor(diff / 60)} ${t('events.minAgo')}`
+    if (diff < 86_400) return `${Math.floor(diff / 3600)} ${t('events.hoursAgo')}`
+
+    return date.toLocaleDateString(locale.value, {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
   }
 
-  const indicators = computed(() => {
-    if (!event.value?.aiResponse) return []
-    const response = event.value.aiResponse
-    return Object.entries(indicatorConfig)
-      .filter(([key]) => key in response)
-      .map(([key, config]) => ({
-        key,
-        label: config.label,
-        value: response[key] as boolean,
-        details: config.detailsKey ? (response[config.detailsKey] as string) : undefined,
-      }))
-  })
-
-  // Fields that are not indicators, summary, or violations
-  const knownKeys = new Set([
-    'summary', 'violations',
-    ...Object.keys(indicatorConfig),
-    ...Object.values(indicatorConfig).map(c => c.detailsKey).filter(Boolean),
-  ])
-
-  const additionalFields = computed(() => {
-    if (!event.value?.aiResponse) return []
-    return Object.entries(event.value.aiResponse)
-      .filter(([key]) => !knownKeys.has(key))
-      .map(([key, value]) => ({
-        key,
-        value: typeof value === 'object' ? JSON.stringify(value) : String(value),
-      }))
-  })
-
-  // Mock event data — in real app this would be fetched by route.params.guid
-  const event = ref({
-    id: route.params.guid as string,
-    camera: 'entrance_main',
-    status: 'completed',
-    watcher: 'Пост охраны — вход',
-    time: '2 мин назад',
-    processingTime: 1240,
-    thumbnailUrl: 'https://placehold.co/800x450/0d1117/00e5ff?text=entrance_main+snapshot',
-    videoUrl: '',
-    prompt: 'Определи действия охранника: проводит ли досмотр, проверяет ли сумки, есть ли подозрительное поведение посетителей. Ответь в формате JSON.',
-    aiProvider: 'Ollama Local',
-    aiModel: 'llava:13b',
-    error: null as string | null,
-    aiResponse: {
-      guard_present: true,
-      guard_description: 'Охранник в форме находится за стойкой охраны слева от входа.',
-      visitors_detected: true,
-      visitors_count: 2,
-      bag_inspection_performed: true,
-      bag_inspection_details: 'Охранник проверяет сумки посетителей у стойки, используя ручной осмотр и, возможно, металлодетектор.',
-      person_inspection_performed: true,
-      person_inspection_details: 'Посетители проходят через рамку металлодетектора, установленную рядом со стойкой охраны.',
-      summary: 'На входе присутствует охранник, который проводит досмотр посетителей и их сумок. Посетители проходят через металлодетектор, а их вещи проверяются вручную.',
-      violations: [] as string[],
-    } as Record<string, unknown>,
-  })
+  async function retryAnalysis () {
+    if (!event.value) return
+    retrying.value = true
+    const result = await analysisApi.retry(event.value.guid)
+    if (result.success) {
+      event.value = result.data
+    }
+    retrying.value = false
+  }
 </script>
 
 <style lang="scss" scoped>
@@ -290,13 +327,18 @@
   }
 }
 
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: 48px;
+}
+
 .event-detail {
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-// Media
 .event-detail__media {
   position: relative;
   width: 100%;
@@ -335,7 +377,6 @@
   }
 }
 
-// Meta bar
 .event-detail__meta-bar {
   display: flex;
   align-items: center;
@@ -376,7 +417,6 @@
   font-family: 'Roboto Mono', monospace;
 }
 
-// Analysis section
 .event-detail__analysis {
   display: flex;
   flex-direction: column;
@@ -396,48 +436,33 @@
   }
 }
 
-// Violations
-.analysis-violations {
-  padding: 14px 16px;
-  background: rgba(248, 81, 73, 0.06);
-  border: 1px solid rgba(248, 81, 73, 0.2);
-  border-radius: 12px;
-}
-
-.analysis-violations__header {
+.analysis-visitors {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  padding: 12px 16px;
+  background: rgba(22, 27, 34, 0.6);
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  border-radius: 12px;
+  color: rgba(230, 237, 243, 0.8);
+  font-size: 13px;
+}
+
+.analysis-visitors__label {
   font-weight: 600;
-  color: rgb(var(--v-theme-error));
-  margin-bottom: 10px;
 }
 
-.analysis-violations__list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-
-  li {
-    font-size: 13px;
-    color: rgba(230, 237, 243, 0.8);
-    padding-left: 20px;
-    position: relative;
-
-    &::before {
-      content: '•';
-      position: absolute;
-      left: 6px;
-      color: rgb(var(--v-theme-error));
-    }
-  }
+.analysis-visitors__count {
+  font-size: 18px;
+  font-weight: 700;
+  color: rgb(var(--v-theme-primary));
+  font-family: 'Roboto Mono', monospace;
 }
 
-// Indicators
+.analysis-visitors__message {
+  color: rgba(230, 237, 243, 0.5);
+}
+
 .analysis-indicators {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -457,18 +482,14 @@
     border-color: rgba(63, 185, 80, 0.2);
     background: rgba(63, 185, 80, 0.04);
 
-    .v-icon {
-      color: rgb(var(--v-theme-success));
-    }
+    .v-icon { color: rgb(var(--v-theme-success)); }
   }
 
   &--negative {
     border-color: rgba(248, 81, 73, 0.2);
     background: rgba(248, 81, 73, 0.04);
 
-    .v-icon {
-      color: rgb(var(--v-theme-error));
-    }
+    .v-icon { color: rgb(var(--v-theme-error)); }
   }
 }
 
@@ -490,36 +511,6 @@
   line-height: 1.4;
 }
 
-// Additional fields
-.analysis-extra {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.extra-field {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: rgba(22, 27, 34, 0.5);
-  border: 1px solid rgba(48, 54, 61, 0.4);
-  border-radius: 8px;
-}
-
-.extra-field__label {
-  font-size: 11px;
-  color: rgba(230, 237, 243, 0.5);
-  font-family: 'Roboto Mono', monospace;
-}
-
-.extra-field__value {
-  font-size: 12px;
-  color: rgb(var(--v-theme-primary));
-  font-family: 'Roboto Mono', monospace;
-}
-
-// Raw JSON
 .analysis-raw {
   border: 1px solid rgba(48, 54, 61, 0.4);
   border-radius: 12px;
@@ -536,9 +527,7 @@
   cursor: pointer;
   transition: color 0.15s ease;
 
-  &:hover {
-    color: rgb(var(--v-theme-primary));
-  }
+  &:hover { color: rgb(var(--v-theme-primary)); }
 }
 
 .analysis-raw__code {
@@ -553,12 +542,9 @@
   white-space: pre-wrap;
   word-break: break-word;
 
-  &--prompt {
-    color: rgba(230, 237, 243, 0.8);
-  }
+  &--prompt { color: rgba(230, 237, 243, 0.8); }
 }
 
-// States
 .event-detail__state {
   display: flex;
   flex-direction: column;
@@ -570,20 +556,15 @@
   border-radius: 12px;
   color: rgba(230, 237, 243, 0.6);
 
-  &--error {
-    border-color: rgba(248, 81, 73, 0.2);
-  }
+  &--error { border-color: rgba(248, 81, 73, 0.2); }
 }
 
-// Info row
 .event-detail__info-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 
-  @media (max-width: 500px) {
-    grid-template-columns: 1fr;
-  }
+  @media (max-width: 500px) { grid-template-columns: 1fr; }
 }
 
 .info-block {
@@ -605,5 +586,14 @@
 .info-block__value {
   font-size: 13px;
   color: rgba(230, 237, 243, 0.85);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 16px;
+  color: rgba(230, 237, 243, 0.5);
 }
 </style>

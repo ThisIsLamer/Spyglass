@@ -6,12 +6,13 @@ export const GLOBAL_CONFIG = {
     HOST: process.env.APP_HOST ?? '0.0.0.0',
     PAPER: process.env.APP_PASSWORD_PAPER ?? '',
     JWT_SECRET: process.env.APP_JWT_SECRET ?? 'change-me-in-production',
+    CORS_ORIGIN: (process.env.APP_CORS_ORIGIN ?? 'http://localhost:3018').split(',').map(s => s.trim()),
   },
   DATABASE: {
     SQL: {
-      URL: process.env.DATABASE_SQL_URL ?? 'mysql://localhost:3306/ai_provider'
+      URL: process.env.DATABASE_URL ?? 'mysql://localhost:3306/ai_provider'
     },
-    LOGGING: Boolean(process.env.DATABASE_LOGGING) ?? false
+    LOGGING: process.env.DATABASE_LOGGING === 'true'
   },
   FRIGATE: {
     MQTT_URL: process.env.FRIGATE_MQTT_URL ?? 'mqtt://localhost:1883',

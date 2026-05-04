@@ -5,9 +5,10 @@ import { WatcherController } from "./watcher/watcher.controller.js";
 import { AiProviderController } from "./ai-provider/ai-provider.controller.js";
 import { AnalysisEventController } from "./analysis/analysis-event.controller.js";
 import { FrigateController } from "./frigate/frigate.controller.js";
+import { SseController } from "./sse/sse.controller.js";
 
 @Module({
-  prefix: 'ai',
+  prefix: 'api',
   version: 'v1',
   controllers: [
     AuthController,
@@ -16,6 +17,7 @@ import { FrigateController } from "./frigate/frigate.controller.js";
     AiProviderController,
     AnalysisEventController,
     FrigateController,
+    SseController,
   ]
 })
 export class V1Module {}

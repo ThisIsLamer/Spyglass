@@ -1,44 +1,58 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { authApi } from '@/api/auth'
 
 export interface AuthUser {
   guid: string
   username: string
-  displayName: string
+  displayName?: string
   role: 'admin' | 'operator' | 'viewer'
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref<string | null>(localStorage.getItem('spyglass_token'))
-  const user = ref<AuthUser | null>(
-    JSON.parse(localStorage.getItem('spyglass_user') || 'null'),
-  )
+  const user = ref<AuthUser | null>(null)
+  const ready = ref(false)
 
-  const isAuthenticated = computed(() => !!token.value && !!user.value)
+  const isAuthenticated = computed(() => !!user.value)
   const isAdmin = computed(() => user.value?.role === 'admin')
   const isOperator = computed(() => user.value?.role === 'operator' || isAdmin.value)
 
-  function setAuth (newToken: string, newUser: AuthUser) {
-    token.value = newToken
+  function setUser (newUser: AuthUser) {
     user.value = newUser
-    localStorage.setItem('spyglass_token', newToken)
-    localStorage.setItem('spyglass_user', JSON.stringify(newUser))
   }
 
-  function logout () {
-    token.value = null
+  function clearUser () {
     user.value = null
-    localStorage.removeItem('spyglass_token')
-    localStorage.removeItem('spyglass_user')
+  }
+
+  async function init () {
+    if (ready.value) {
+      return
+    }
+
+    const res = await authApi.me()
+
+    if (res.success) {
+      setUser(res.user)
+    }
+
+    ready.value = true
+  }
+
+  async function logout () {
+    await authApi.logout()
+    clearUser()
   }
 
   return {
-    token,
     user,
+    ready,
     isAuthenticated,
     isAdmin,
     isOperator,
-    setAuth,
+    setUser,
+    clearUser,
     logout,
+    init,
   }
 })

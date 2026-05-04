@@ -18,20 +18,25 @@
       </v-chip>
     </div>
 
+    <!-- Loading -->
+    <div v-if="loading" class="loading-state">
+      <v-progress-circular color="primary" indeterminate size="32" />
+    </div>
+
     <!-- Events List -->
-    <div class="events-list">
+    <div v-else class="events-list">
       <router-link
         v-for="event in filteredEvents"
-        :key="event.id"
+        :key="event.guid"
         class="event-card"
-        :to="{ name: 'event-detail', params: { guid: event.id } }"
+        :to="{ name: 'event-detail', params: { guid: event.guid } }"
       >
         <!-- Thumbnail -->
         <div class="event-card__media">
           <img
             :alt="event.camera"
             class="event-card__thumbnail"
-            :src="event.thumbnailUrl"
+            :src="getThumbnailUrl(event.frigateEventId)"
           >
 
           <div class="event-card__media-overlay">
@@ -56,55 +61,42 @@
               {{ event.camera }}
             </span>
 
-            <span class="event-card__time">{{ event.time }}</span>
+            <span class="event-card__time">{{ formatTime(event.createdAt) }}</span>
           </div>
 
           <p class="event-card__summary">
-            {{ event.aiResponse?.summary || t('events.noSummary') }}
+            {{ getSummary(event) }}
           </p>
 
-          <!-- Violations -->
-          <div v-if="event.aiResponse?.violations?.length" class="event-card__violations">
-            <v-chip
-              v-for="(violation, idx) in event.aiResponse.violations.slice(0, 2)"
-              :key="idx"
-              color="error"
-              size="x-small"
-              variant="tonal"
-            >
-              {{ violation }}
-            </v-chip>
-
-            <v-chip
-              v-if="event.aiResponse.violations.length > 2"
-              size="x-small"
-              variant="outlined"
-            >
-              +{{ event.aiResponse.violations.length - 2 }}
-            </v-chip>
-          </div>
-
-          <!-- Indicators -->
+          <!-- Checks indicators -->
           <div v-if="event.aiResponse && event.status === 'completed'" class="event-card__indicators">
             <span
-              v-for="indicator in getIndicators(event.aiResponse)"
-              :key="indicator.key"
+              v-for="check in getChecks(event.aiResponse)"
+              :key="check.key"
               class="event-card__indicator"
-              :class="{ 'event-card__indicator--positive': indicator.value, 'event-card__indicator--negative': !indicator.value }"
+              :class="{
+                'event-card__indicator--positive': check.valid,
+                'event-card__indicator--negative': !check.valid,
+              }"
             >
-              <v-icon :icon="indicator.value ? 'mdi-check-circle' : 'mdi-close-circle'" size="12" />
-              {{ indicator.label }}
+              <v-icon :icon="check.valid ? 'mdi-check-circle' : 'mdi-close-circle'" size="12" />
+              {{ check.label }}
             </span>
           </div>
+
+          <!-- Error -->
+          <p v-if="event.status === 'failed' && event.error" class="event-card__error">
+            {{ event.error }}
+          </p>
 
           <div class="event-card__bottom">
             <span class="event-card__watcher">
               <v-icon icon="mdi-eye-outline" size="13" />
-              {{ event.watcher }}
+              {{ event.watcher?.name ?? '—' }}
             </span>
 
-            <span v-if="event.processingTime" class="event-card__processing">
-              {{ event.processingTime }}ms
+            <span v-if="event.processingTimeMs" class="event-card__processing">
+              {{ event.processingTimeMs }}ms
             </span>
           </div>
         </div>
@@ -119,11 +111,14 @@
 </template>
 
 <script lang="ts" setup>
-  import { computed, ref } from 'vue'
+  import { computed, onMounted, ref } from 'vue'
   import { useI18n } from 'vue-i18n'
+  import { analysisApi, type AnalysisEvent, getThumbnailUrl } from '@/api/analysis'
 
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
 
+  const loading = ref(true)
+  const events = ref<AnalysisEvent[]>([])
   const activeStatus = ref('all')
 
   const statuses = [
@@ -133,6 +128,24 @@
     { value: 'pending', label: t('events.pending'), color: 'info' },
     { value: 'failed', label: t('events.failed'), color: 'error' },
   ]
+
+  onMounted(async () => {
+    await loadEvents()
+  })
+
+  async function loadEvents () {
+    loading.value = true
+    const result = await analysisApi.getAll()
+    if (result.success) {
+      events.value = result.data
+    }
+    loading.value = false
+  }
+
+  const filteredEvents = computed(() => {
+    if (activeStatus.value === 'all') return events.value
+    return events.value.filter(e => e.status === activeStatus.value)
+  })
 
   function getStatusColor (status: string) {
     const map: Record<string, string> = {
@@ -144,118 +157,58 @@
     return map[status] ?? 'info'
   }
 
-  interface AiResponse {
-    [key: string]: unknown
-    guard_present?: boolean
-    visitors_detected?: boolean
-    bag_inspection_performed?: boolean
-    person_inspection_performed?: boolean
-    summary?: string
-    violations?: string[]
+  interface AiCheck {
+    key: string
+    label: string
+    valid: boolean
   }
 
-  interface AnalysisEvent {
-    id: string
-    camera: string
-    status: string
-    watcher: string
-    time: string
-    processingTime: number | null
-    thumbnailUrl: string
-    aiResponse: AiResponse | null
+  function getChecks (aiResponse: Record<string, unknown>): AiCheck[] {
+    const checks = aiResponse.checks as Array<{
+      key: string
+      label: Record<string, string>
+      valid: boolean
+    }> | undefined
+
+    if (!checks || !Array.isArray(checks)) return []
+
+    const lang = locale.value === 'ru' ? 'ru' : 'en'
+
+    return checks.map(c => ({
+      key: c.key,
+      label: c.label?.[lang] ?? c.label?.en ?? c.key,
+      valid: c.valid,
+    }))
   }
 
-  const indicatorLabels: Record<string, string> = {
-    guard_present: 'Охранник',
-    bag_inspection_performed: 'Досмотр сумок',
-    person_inspection_performed: 'Досмотр людей',
-    visitors_detected: 'Посетители',
+  function getSummary (event: AnalysisEvent): string {
+    if (!event.aiResponse) return t('events.noSummary')
+
+    const summary = event.aiResponse.summary as Record<string, string> | string | undefined
+    if (!summary) return t('events.noSummary')
+
+    if (typeof summary === 'string') return summary
+
+    const lang = locale.value === 'ru' ? 'ru' : 'en'
+    return summary[lang] ?? summary.en ?? t('events.noSummary')
   }
 
-  function getIndicators (response: AiResponse) {
-    return Object.entries(indicatorLabels)
-      .filter(([key]) => key in response)
-      .map(([key, label]) => ({
-        key,
-        label,
-        value: !!response[key],
-      }))
+  function formatTime (dateStr: string) {
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diff = Math.floor((now.getTime() - date.getTime()) / 1000)
+
+    if (diff < 60) return t('events.justNow')
+    if (diff < 3600) return `${Math.floor(diff / 60)} ${t('events.minAgo')}`
+    if (diff < 86_400) return `${Math.floor(diff / 3600)} ${t('events.hoursAgo')}`
+
+    return date.toLocaleDateString(locale.value, {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
   }
-
-  const filteredEvents = computed(() => {
-    if (activeStatus.value === 'all') return mockEvents.value
-    return mockEvents.value.filter(e => e.status === activeStatus.value)
-  })
-
-  // Mock data with realistic AI responses
-  const mockEvents = ref<AnalysisEvent[]>([
-    {
-      id: 'evt-001',
-      camera: 'entrance_main',
-      status: 'completed',
-      watcher: 'Пост охраны — вход',
-      time: '2 мин назад',
-      processingTime: 1240,
-      thumbnailUrl: 'https://placehold.co/320x180/0d1117/00e5ff?text=entrance_main',
-      aiResponse: {
-        guard_present: true,
-        guard_description: 'Охранник в форме находится за стойкой охраны слева от входа.',
-        visitors_detected: true,
-        visitors_count: 2,
-        bag_inspection_performed: true,
-        bag_inspection_details: 'Охранник проверяет сумки посетителей у стойки.',
-        person_inspection_performed: true,
-        person_inspection_details: 'Посетители проходят через рамку металлодетектора.',
-        summary: 'На входе присутствует охранник, который проводит досмотр посетителей и их сумок. Посетители проходят через металлодетектор, а их вещи проверяются вручную.',
-        violations: [],
-      },
-    },
-    {
-      id: 'evt-002',
-      camera: 'entrance_main',
-      status: 'completed',
-      watcher: 'Пост охраны — вход',
-      time: '7 мин назад',
-      processingTime: 1180,
-      thumbnailUrl: 'https://placehold.co/320x180/0d1117/f85149?text=VIOLATION',
-      aiResponse: {
-        guard_present: false,
-        guard_description: 'Охранник отсутствует за стойкой охраны, но видно, что стойка охраны есть.',
-        visitors_detected: true,
-        visitors_count: 3,
-        bag_inspection_performed: false,
-        bag_inspection_details: 'Досмотр сумок не производился',
-        person_inspection_performed: false,
-        person_inspection_details: 'Досмотр посетителей не производился',
-        summary: 'На входе в помещение отсутствует охранник и досмотр посетителей и их сумок. Трое посетителей прошли через металлодетектор без проверки.',
-        violations: [
-          'Отсутствие охранника на посту',
-          'Отсутствие досмотра посетителей',
-          'Отсутствие досмотра сумок',
-        ],
-      },
-    },
-    {
-      id: 'evt-003',
-      camera: 'parking_east',
-      status: 'processing',
-      watcher: 'Парковка — движение',
-      time: '1 мин назад',
-      processingTime: null,
-      thumbnailUrl: 'https://placehold.co/320x180/0d1117/d29922?text=processing...',
-      aiResponse: null,
-    },
-    {
-      id: 'evt-004',
-      camera: 'hall_floor1',
-      status: 'failed',
-      watcher: 'Холл — скопления',
-      time: '15 мин назад',
-      processingTime: null,
-      thumbnailUrl: 'https://placehold.co/320x180/0d1117/f85149?text=error',
-      aiResponse: null,
-    },
-  ])
 </script>
 
 <style lang="scss" scoped>
@@ -279,6 +232,12 @@
   gap: 8px;
   margin-bottom: 16px;
   flex-wrap: wrap;
+}
+
+.loading-state {
+  display: flex;
+  justify-content: center;
+  padding: 48px;
 }
 
 .events-list {
@@ -310,7 +269,6 @@
   }
 }
 
-// Media / Thumbnail
 .event-card__media {
   position: relative;
   width: 140px;
@@ -356,7 +314,6 @@
   right: 6px;
 }
 
-// Content
 .event-card__content {
   flex: 1;
   min-width: 0;
@@ -397,10 +354,10 @@
   overflow: hidden;
 }
 
-.event-card__violations {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+.event-card__error {
+  font-size: 12px;
+  color: rgb(var(--v-theme-error));
+  line-height: 1.4;
 }
 
 .event-card__indicators {

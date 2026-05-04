@@ -8,32 +8,32 @@ export class FrigateClient {
   private client: MqttClient | null = null;
   private handler = new FrigateHandler();
 
-  async connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.client = mqtt.connect(MQTT_URL, {
-        clientId: `spyglass-${Date.now()}`,
-        clean: true,
-        reconnectPeriod: 5000,
-      });
+  connect(): void {
+    this.client = mqtt.connect(MQTT_URL, {
+      clientId: `spyglass-${Date.now()}`,
+      clean: true,
+      reconnectPeriod: 5000,
+    });
 
-      this.client.on('connect', () => {
-        console.log(`[Frigate] Connected to MQTT broker: ${MQTT_URL}`);
-        this.subscribe();
-        resolve();
-      });
+    this.client.on('connect', () => {
+      console.log(`[Frigate] Connected to MQTT broker: ${MQTT_URL}`);
+      this.subscribe();
+    });
 
-      this.client.on('error', (err) => {
-        console.error('[Frigate] MQTT error:', err.message);
-        reject(err);
-      });
+    this.client.on('error', (err) => {
+      console.error('[Frigate] MQTT error:', err.message);
+    });
 
-      this.client.on('reconnect', () => {
-        console.log('[Frigate] Reconnecting to MQTT broker...');
-      });
+    this.client.on('reconnect', () => {
+      console.log('[Frigate] Reconnecting to MQTT broker...');
+    });
 
-      this.client.on('message', (topic, payload) => {
-        this.onMessage(topic, payload);
-      });
+    this.client.on('offline', () => {
+      console.warn('[Frigate] MQTT client went offline');
+    });
+
+    this.client.on('message', (topic, payload) => {
+      this.onMessage(topic, payload);
     });
   }
 
@@ -53,7 +53,6 @@ export class FrigateClient {
 
     const topics = [
       `${TOPIC_PREFIX}/reviews`,
-      `${TOPIC_PREFIX}/events`,
     ];
 
     this.client.subscribe(topics, (err) => {
