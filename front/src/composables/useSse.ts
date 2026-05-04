@@ -19,9 +19,9 @@ function connect () {
     connected.value = true
   })
 
-  eventSource.onerror = () => {
+  eventSource.addEventListener('error', () => {
     connected.value = false
-  }
+  })
 
   eventSource.addEventListener('connected', () => {
     connected.value = true
