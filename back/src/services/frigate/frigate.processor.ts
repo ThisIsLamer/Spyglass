@@ -156,6 +156,12 @@ export class FrigateProcessor {
         model: provider.model,
         messages,
         response_format: { type: 'json_object' },
+        temperature: 0.3,
+        top_k: 20,
+        mm_processor_kwargs: {
+          fps: 5,
+          do_sample_frames: true,
+        },
         chat_template_kwargs: { enable_thinking: false },
       }),
     });
