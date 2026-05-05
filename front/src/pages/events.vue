@@ -4,7 +4,6 @@
       <h1 class="page-title">{{ t('events.title') }}</h1>
     </header>
 
-    <!-- Filters -->
     <div class="filters-bar">
       <v-chip
         v-for="status in statuses"
@@ -18,20 +17,32 @@
       </v-chip>
     </div>
 
-    <!-- Loading -->
+    <div class="filters-bar filters-bar--secondary">
+      <v-chip
+        v-for="filter in outcomeFilters"
+        :key="filter.value"
+        :color="activeOutcome === filter.value ? filter.color : undefined"
+        size="small"
+        :variant="activeOutcome === filter.value ? 'flat' : 'outlined'"
+        @click="activeOutcome = filter.value"
+      >
+        <v-icon v-if="filter.icon" :icon="filter.icon" size="14" start />
+        {{ filter.label }}
+      </v-chip>
+    </div>
+
     <div v-if="loading" class="loading-state">
       <v-progress-circular color="primary" indeterminate size="32" />
     </div>
 
-    <!-- Events List -->
     <div v-else class="events-list">
       <router-link
         v-for="event in filteredEvents"
         :key="event.guid"
         class="event-card"
+        :class="{ 'event-card--na': isNotApplicable(event) }"
         :to="{ name: 'event-detail', params: { guid: event.guid } }"
       >
-        <!-- Thumbnail -->
         <div class="event-card__media">
           <img
             :alt="event.camera"
@@ -53,7 +64,6 @@
           </v-chip>
         </div>
 
-        <!-- Content -->
         <div class="event-card__content">
           <div class="event-card__top">
             <span class="event-card__camera">
@@ -61,30 +71,49 @@
               {{ event.camera }}
             </span>
 
-            <span class="event-card__time">{{ formatTime(event.createdAt) }}</span>
+            <div class="event-card__top-right">
+              <span
+                v-if="getDirection(event) === 'exit'"
+                class="event-card__direction event-card__direction--exit"
+                :title="t('events.exitScene')"
+              >
+                <v-icon icon="mdi-exit-run" size="12" />
+                {{ t('events.directionExit') }}
+              </span>
+
+              <span
+                v-else-if="getDirection(event) === 'entry'"
+                class="event-card__direction event-card__direction--entry"
+              >
+                <v-icon icon="mdi-login-variant" size="12" />
+                {{ t('events.directionEntry') }}
+              </span>
+
+              <span class="event-card__time">{{ formatTime(event.createdAt) }}</span>
+            </div>
           </div>
 
-          <p class="event-card__summary">
-            {{ getSummary(event) }}
-          </p>
+          <p class="event-card__summary">{{ getSummaryText(event) }}</p>
 
-          <!-- Checks indicators -->
           <div v-if="event.aiResponse && event.status === 'completed'" class="event-card__indicators">
             <span
-              v-for="check in getChecks(event.aiResponse)"
+              v-for="check in getCheckList(event)"
               :key="check.key"
               class="event-card__indicator"
               :class="{
-                'event-card__indicator--positive': check.valid,
-                'event-card__indicator--negative': !check.valid,
+                'event-card__indicator--positive': check.valid === true,
+                'event-card__indicator--negative': check.valid === false,
+                'event-card__indicator--na': check.valid === null,
               }"
             >
-              <v-icon :icon="check.valid ? 'mdi-check-circle' : 'mdi-close-circle'" size="12" />
+              <v-icon
+                :icon="check.valid === true ? 'mdi-check-circle' : check.valid === false ? 'mdi-close-circle' : 'mdi-minus-circle'"
+                size="12"
+              />
               {{ check.label }}
             </span>
           </div>
 
-          <!-- Error -->
           <p v-if="event.status === 'failed' && event.error" class="event-card__error">
             {{ event.error }}
           </p>
@@ -115,24 +144,42 @@
   import { useI18n } from 'vue-i18n'
   import { analysisApi, type AnalysisEvent, getThumbnailUrl } from '@/api/analysis'
   import { subscribeSse } from '@/composables/useSse'
+  import {
+    type AiCheck,
+    getChecks,
+    getSceneDirection,
+    getSummary,
+    isSceneNotApplicable,
+    type SceneDirection,
+    summarizeEvent,
+  } from '@/utils/ai-response'
 
   const { t, locale } = useI18n()
 
   const loading = ref(true)
   const events = ref<AnalysisEvent[]>([])
-  const activeStatus = ref('all')
+  const activeStatus = ref<string>('all')
+  const activeOutcome = ref<string>('all')
 
-  const statuses = [
-    { value: 'all', label: 'Все', color: 'primary' },
+  const lang = computed<'ru' | 'en'>(() => locale.value === 'ru' ? 'ru' : 'en')
+
+  const statuses = computed(() => [
+    { value: 'all', label: t('common.all'), color: 'primary' },
     { value: 'completed', label: t('events.completed'), color: 'success' },
     { value: 'processing', label: t('events.processing'), color: 'warning' },
     { value: 'pending', label: t('events.pending'), color: 'info' },
     { value: 'failed', label: t('events.failed'), color: 'error' },
-  ]
+  ])
 
-  onMounted(async () => {
-    await loadEvents()
-  })
+  const outcomeFilters = computed(() => [
+    { value: 'all', label: t('events.filterAll'), color: 'primary', icon: null as string | null },
+    { value: 'entry', label: t('events.filterEntry'), color: 'info', icon: 'mdi-login-variant' },
+    { value: 'exit', label: t('events.filterExit'), color: 'secondary', icon: 'mdi-exit-run' },
+    { value: 'violations', label: t('events.filterViolations'), color: 'error', icon: 'mdi-alert-circle-outline' },
+    { value: 'clean', label: t('events.filterClean'), color: 'success', icon: 'mdi-check-circle' },
+  ])
+
+  onMounted(loadEvents)
 
   const unsubCreated = subscribeSse('analysis.created', (data: unknown) => {
     const created = data as AnalysisEvent
@@ -162,9 +209,61 @@
   }
 
   const filteredEvents = computed(() => {
-    if (activeStatus.value === 'all') return events.value
-    return events.value.filter(e => e.status === activeStatus.value)
+    let list = events.value
+
+    if (activeStatus.value !== 'all') {
+      list = list.filter(e => e.status === activeStatus.value)
+    }
+
+    if (activeOutcome.value !== 'all') {
+      list = list.filter(e => matchesOutcome(e, activeOutcome.value))
+    }
+
+    return list
   })
+
+  /**
+   * Outcome filter matcher. Runs purely on the already-loaded list.
+   * Backend filtering will be added later; this keeps the UX consistent now.
+   */
+  function matchesOutcome (event: AnalysisEvent, outcome: string): boolean {
+    if (event.status !== 'completed' || !event.aiResponse) return false
+    const summary = summarizeEvent(event)
+
+    switch (outcome) {
+      case 'entry': { return summary.direction === 'entry'
+      }
+      case 'exit': { return summary.direction === 'exit'
+      }
+      case 'violations': { return summary.hasViolations
+      }
+      case 'clean': { return summary.allValid && !summary.hasViolations
+      }
+      default: { return true
+      }
+    }
+  }
+
+  function getDirection (event: AnalysisEvent): SceneDirection {
+    return getSceneDirection(event.aiResponse)
+  }
+
+  function isNotApplicable (event: AnalysisEvent): boolean {
+    return isSceneNotApplicable(getDirection(event))
+  }
+
+  function getCheckList (event: AnalysisEvent): AiCheck[] {
+    return getChecks(event.aiResponse, lang.value)
+  }
+
+  function getSummaryText (event: AnalysisEvent): string {
+    if (event.status !== 'completed') {
+      return event.description || t('events.noSummary')
+    }
+
+    const summary = getSummary(event.aiResponse, lang.value)
+    return summary || event.description || t('events.noSummary')
+  }
 
   function getStatusColor (status: string) {
     const map: Record<string, string> = {
@@ -174,42 +273,6 @@
       failed: 'error',
     }
     return map[status] ?? 'info'
-  }
-
-  interface AiCheck {
-    key: string
-    label: string
-    valid: boolean
-  }
-
-  function getChecks (aiResponse: Record<string, unknown>): AiCheck[] {
-    const checks = aiResponse.checks as Array<{
-      key: string
-      label: Record<string, string>
-      valid: boolean
-    }> | undefined
-
-    if (!checks || !Array.isArray(checks)) return []
-
-    const lang = locale.value === 'ru' ? 'ru' : 'en'
-
-    return checks.map(c => ({
-      key: c.key,
-      label: c.label?.[lang] ?? c.label?.en ?? c.key,
-      valid: c.valid,
-    }))
-  }
-
-  function getSummary (event: AnalysisEvent): string {
-    if (!event.aiResponse) return t('events.noSummary')
-
-    const summary = event.aiResponse.summary as Record<string, string> | string | undefined
-    if (!summary) return t('events.noSummary')
-
-    if (typeof summary === 'string') return summary
-
-    const lang = locale.value === 'ru' ? 'ru' : 'en'
-    return summary[lang] ?? summary.en ?? t('events.noSummary')
   }
 
   function formatTime (dateStr: string) {
@@ -249,8 +312,14 @@
 .filters-bar {
   display: flex;
   gap: 8px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   flex-wrap: wrap;
+
+  &--secondary {
+    margin-bottom: 16px;
+    padding-top: 4px;
+    border-top: 1px dashed rgba(48, 54, 61, 0.4);
+  }
 }
 
 .loading-state {
@@ -285,6 +354,11 @@
 
   &:active {
     transform: translateY(0);
+  }
+
+  &--na {
+    opacity: 0.7;
+    border-style: dashed;
   }
 }
 
@@ -345,6 +419,37 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
+}
+
+.event-card__top-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.event-card__direction {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+
+  &--entry {
+    color: rgb(var(--v-theme-info));
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px solid rgba(56, 189, 248, 0.2);
+  }
+
+  &--exit {
+    color: rgba(230, 237, 243, 0.55);
+    background: rgba(100, 116, 139, 0.1);
+    border: 1px solid rgba(100, 116, 139, 0.25);
+  }
 }
 
 .event-card__camera {
@@ -398,6 +503,10 @@
 
   &--negative {
     color: rgb(var(--v-theme-error));
+  }
+
+  &--na {
+    color: rgba(230, 237, 243, 0.35);
   }
 }
 

@@ -11,6 +11,7 @@ export class WatcherPresenter {
       objectLabels: watcher.objectLabels,
       analysisType: watcher.analysisType,
       prompt: watcher.prompt,
+      descriptionPrompt: watcher.descriptionPrompt ?? null,
       cooldownSeconds: watcher.cooldownSeconds,
       aiProvider: watcher.aiProvider ? {
         guid: watcher.aiProvider.guid,

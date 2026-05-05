@@ -16,6 +16,7 @@ const createSchema = z.object({
   cameras: z.array(z.string()).min(1),
   analysisType: z.nativeEnum(AnalysisType),
   prompt: z.string().min(1),
+  descriptionPrompt: z.string().nullable().optional(),
   zones: z.array(z.string()).optional(),
   objectLabels: z.array(z.string()).optional(),
   cooldownSeconds: z.number().int().min(0).optional(),
@@ -30,6 +31,7 @@ const updateSchema = z.object({
   cameras: z.array(z.string()).min(1).optional(),
   analysisType: z.nativeEnum(AnalysisType).optional(),
   prompt: z.string().min(1).optional(),
+  descriptionPrompt: z.string().nullable().optional(),
   zones: z.array(z.string()).optional(),
   objectLabels: z.array(z.string()).optional(),
   cooldownSeconds: z.number().int().min(0).optional(),
@@ -65,7 +67,7 @@ export class WatcherController {
   @Roles('admin')
   @ValidateBody(createSchema)
   async create(request: FastifyRequest<{ Body: CreateDto }>) {
-    const { zones, objectLabels, cooldownSeconds, enabled, aiProviderGuid, ...rest } = request.body;
+    const { zones, objectLabels, cooldownSeconds, enabled, aiProviderGuid, descriptionPrompt, ...rest } = request.body;
 
     const watcher = await this.watcherService.create({
       ...rest,
@@ -74,6 +76,7 @@ export class WatcherController {
       ...(cooldownSeconds !== undefined && { cooldownSeconds }),
       ...(enabled !== undefined && { enabled }),
       ...(aiProviderGuid && { aiProviderGuid }),
+      ...(descriptionPrompt !== undefined && { descriptionPrompt }),
     });
 
     return { success: true, data: WatcherPresenter.present(watcher) };

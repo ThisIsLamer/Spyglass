@@ -79,10 +79,26 @@
           <span>{{ t('events.exitScene') }}</span>
         </div>
 
+        <!-- Entry scene banner -->
+        <div v-else-if="sceneDirection === 'entry'" class="analysis-entry-banner">
+          <v-icon icon="mdi-login-variant" size="18" />
+          <span>{{ t('events.entryScene') }}</span>
+        </div>
+
         <!-- Summary -->
         <div v-if="summary" class="analysis-summary">
           <p>{{ summary }}</p>
         </div>
+
+        <!-- Raw scene description (stage 1 of two-stage mode) -->
+        <details v-if="event.description" class="analysis-description">
+          <summary class="analysis-description__toggle">
+            <v-icon icon="mdi-text-long" size="16" />
+            {{ t('events.sceneDescription') }}
+          </summary>
+
+          <p class="analysis-description__text">{{ event.description }}</p>
+        </details>
 
         <!-- Visitor count -->
         <div v-if="visitorCount" class="analysis-visitors">
@@ -200,6 +216,13 @@
   import { analysisApi, type AnalysisEvent, getClipUrl, getSnapshotUrl } from '@/api/analysis'
   import { subscribeSse } from '@/composables/useSse'
   import { useAuthStore } from '@/stores/auth'
+  import {
+    getSceneDirection,
+    isSceneNotApplicable,
+    getChecks as parseChecks,
+    getSummary as parseSummary,
+    getVisitorCount as parseVisitorCount,
+  } from '@/utils/ai-response'
 
   const { t, locale } = useI18n()
   const route = useRoute()
@@ -240,68 +263,17 @@
     unsubCreated()
   })
 
-  const lang = computed(() => locale.value === 'ru' ? 'ru' : 'en')
+  const lang = computed<'ru' | 'en'>(() => locale.value === 'ru' ? 'ru' : 'en')
 
-  interface AiCheck {
-    key: string
-    label: Record<string, string>
-    valid: boolean | null
-    message: Record<string, string>
-  }
+  const sceneDirection = computed(() => getSceneDirection(event.value?.aiResponse))
 
-  interface AiVisitorCount {
-    label: Record<string, string>
-    count: number
-    message: Record<string, string>
-  }
+  const isExitScene = computed(() => isSceneNotApplicable(sceneDirection.value))
 
-  const sceneDirection = computed(() => {
-    const response = event.value?.aiResponse
-    if (!response) return null
-    return (response.scene_direction as string | undefined) ?? null
-  })
+  const checks = computed(() => parseChecks(event.value?.aiResponse, lang.value))
 
-  const isExitScene = computed(() => sceneDirection.value === 'exit')
+  const visitorCount = computed(() => parseVisitorCount(event.value?.aiResponse, lang.value))
 
-  const checks = computed(() => {
-    const response = event.value?.aiResponse
-    if (!response) return []
-
-    const raw = response.checks as AiCheck[] | undefined
-    if (!raw || !Array.isArray(raw)) return []
-
-    return raw.map(c => ({
-      key: c.key,
-      label: c.label?.[lang.value] ?? c.label?.en ?? c.key,
-      valid: c.valid,
-      message: c.message?.[lang.value] ?? c.message?.en ?? '',
-    }))
-  })
-
-  const visitorCount = computed(() => {
-    const response = event.value?.aiResponse
-    if (!response) return null
-
-    const raw = response.visitor_count as AiVisitorCount | undefined
-    if (!raw) return null
-
-    return {
-      label: raw.label?.[lang.value] ?? raw.label?.en ?? 'Visitors',
-      count: raw.count,
-      message: raw.message?.[lang.value] ?? raw.message?.en ?? '',
-    }
-  })
-
-  const summary = computed(() => {
-    const response = event.value?.aiResponse
-    if (!response) return null
-
-    const raw = response.summary as Record<string, string> | string | undefined
-    if (!raw) return null
-    if (typeof raw === 'string') return raw
-
-    return raw[lang.value] ?? raw.en ?? null
-  })
+  const summary = computed(() => parseSummary(event.value?.aiResponse, lang.value))
 
   function getStatusColor (status: string) {
     const map: Record<string, string> = {
@@ -475,6 +447,48 @@
   color: rgba(230, 237, 243, 0.6);
 
   .v-icon { color: rgba(230, 237, 243, 0.4); }
+}
+
+.analysis-entry-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  border-radius: 10px;
+  font-size: 13px;
+  color: rgb(var(--v-theme-info));
+
+  .v-icon { color: rgb(var(--v-theme-info)); }
+}
+
+.analysis-description {
+  border: 1px solid rgba(48, 54, 61, 0.4);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.analysis-description__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: rgba(230, 237, 243, 0.6);
+  cursor: pointer;
+  transition: color 0.15s ease;
+
+  &:hover { color: rgb(var(--v-theme-primary)); }
+}
+
+.analysis-description__text {
+  padding: 0 16px 14px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(230, 237, 243, 0.75);
+  white-space: pre-wrap;
 }
 
 .analysis-summary {

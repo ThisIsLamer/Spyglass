@@ -4,6 +4,7 @@ import { Watcher } from '#src/modules/v1/watcher/watcher.entity.js';
 import { AiProvider } from '#src/modules/v1/ai-provider/ai-provider.entity.js';
 import { AnalysisEventService } from '#src/modules/v1/analysis/analysis-event.service.js';
 import { AnalysisStatus } from '#src/modules/v1/analysis/analysis-event.entity.js';
+import { aiAnalyzer } from '#src/services/ai/ai-analyzer.js';
 import type { FrigateReviewData } from './frigate.handler.js';
 
 const { API_URL } = GLOBAL_CONFIG.FRIGATE;
@@ -83,6 +84,10 @@ export class FrigateProcessor {
     }
 
     const prompt = this.buildPrompt(watcher.prompt, review);
+    const descriptionPrompt = watcher.descriptionPrompt
+      ? this.buildPrompt(watcher.descriptionPrompt, review)
+      : null;
+
     const mediaUrl = this.getMediaUrl(review, watcher.analysisType);
     const mediaBase64 = mediaUrl ? await this.fetchMediaAsBase64(mediaUrl, watcher.analysisType) : undefined;
 
@@ -91,6 +96,7 @@ export class FrigateProcessor {
       frigateEventId: review.data.detections[0] ?? review.id,
       camera: review.camera,
       prompt,
+      descriptionPrompt,
       aiProviderName: provider.name,
       aiModel: provider.model,
       label: review.data.objects[0],
@@ -98,24 +104,56 @@ export class FrigateProcessor {
       mediaPath: mediaUrl ?? undefined,
     });
 
-    this.analyze(event.guid, provider, prompt, mediaBase64, analysisService, watcher.analysisType).catch(err => {
+    this.analyze(event.guid, provider, prompt, descriptionPrompt, mediaBase64, analysisService, watcher.analysisType).catch(err => {
       console.error(`[FrigateProcessor] Analysis failed for event ${event.guid}:`, err);
     });
   }
 
-  private async analyze(eventGuid: string, provider: AiProvider, prompt: string, mediaBase64: string | undefined, analysisService: AnalysisEventService, analysisType: string): Promise<void> {
+  private async analyze(
+    eventGuid: string,
+    provider: AiProvider,
+    prompt: string,
+    descriptionPrompt: string | null,
+    mediaBase64: string | undefined,
+    analysisService: AnalysisEventService,
+    analysisType: string,
+  ): Promise<void> {
     const startTime = Date.now();
 
     try {
       await analysisService.update(eventGuid, { status: AnalysisStatus.PROCESSING });
 
-      const response = await this.callAiProvider(provider, prompt, mediaBase64, analysisType);
+      if (descriptionPrompt) {
+        // Two-stage mode. Description is persisted between stages so that
+        // it remains visible even if stage 2 fails.
+        console.log(`[FrigateProcessor] Event ${eventGuid}: two-stage analysis`);
 
-      await analysisService.update(eventGuid, {
-        status: AnalysisStatus.COMPLETED,
-        aiResponse: response,
-        processingTimeMs: Date.now() - startTime,
-      });
+        const { response } = await aiAnalyzer.runTwoStage(
+          provider,
+          descriptionPrompt,
+          prompt,
+          mediaBase64,
+          analysisType,
+          async (description) => {
+            await analysisService.update(eventGuid, { description });
+          },
+        );
+
+        await analysisService.update(eventGuid, {
+          status: AnalysisStatus.COMPLETED,
+          aiResponse: response,
+          processingTimeMs: Date.now() - startTime,
+        });
+      } else {
+        // Single-stage mode: vision → JSON directly.
+        const response = await aiAnalyzer.callVisionJson(provider, prompt, mediaBase64, analysisType);
+
+        await analysisService.update(eventGuid, {
+          status: AnalysisStatus.COMPLETED,
+          aiResponse: response,
+          processingTimeMs: Date.now() - startTime,
+        });
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
@@ -125,59 +163,6 @@ export class FrigateProcessor {
         processingTimeMs: Date.now() - startTime,
       });
     }
-  }
-
-  private async callAiProvider(provider: AiProvider, prompt: string, mediaBase64: string | undefined, analysisType: string): Promise<Record<string, unknown>> {
-    const messages: Array<Record<string, unknown>> = [];
-
-    if (mediaBase64) {
-      const mediaType = analysisType === 'video_clip' ? 'video_url' : 'image_url';
-
-      messages.push({
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          { type: mediaType, [mediaType]: { url: mediaBase64 } },
-        ],
-      });
-    } else {
-      messages.push({ role: 'user', content: prompt });
-    }
-
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (provider.apiKey) {
-      headers['Authorization'] = `Bearer ${provider.apiKey}`;
-    }
-
-    const res = await fetch(`${provider.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: provider.model,
-        messages,
-        response_format: { type: 'json_object' },
-        temperature: 0.3,
-        top_k: 20,
-        mm_processor_kwargs: {
-          fps: 5,
-          do_sample_frames: true,
-        },
-        chat_template_kwargs: { enable_thinking: false },
-      }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`AI provider returned ${res.status}: ${await res.text()}`);
-    }
-
-    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
-    const content = data.choices[0]?.message?.content;
-
-    if (!content) {
-      throw new Error('AI provider returned empty response');
-    }
-
-    return JSON.parse(content) as Record<string, unknown>;
   }
 
   private async fetchMediaAsBase64(url: string, analysisType: string): Promise<string> {

@@ -9,7 +9,7 @@ export enum AnalysisType {
 }
 
 @Entity({ tableName: 'watchers' })
-export class Watcher extends BaseEntity<'guid' | 'enabled' | 'zones' | 'objectLabels' | 'cooldownSeconds' | 'aiProvider'> {
+export class Watcher extends BaseEntity<'guid' | 'enabled' | 'zones' | 'objectLabels' | 'cooldownSeconds' | 'aiProvider' | 'descriptionPrompt'> {
   @Property({ type: 'string', length: 36, unique: true, onCreate: () => randomUUID() })
   guid: string = randomUUID();
 
@@ -33,6 +33,15 @@ export class Watcher extends BaseEntity<'guid' | 'enabled' | 'zones' | 'objectLa
 
   @Property({ type: 'text' })
   prompt!: string;
+
+  /**
+   * Optional description prompt. When set, analysis runs in two-stage mode:
+   * 1. Vision request with `descriptionPrompt` → free-text description of the scene
+   * 2. Text-only request with `prompt` + description → structured JSON
+   * When null, single-stage mode is used (prompt only).
+   */
+  @Property({ type: 'text', nullable: true })
+  descriptionPrompt?: string | null;
 
   @Property({ type: 'integer', default: 0 })
   cooldownSeconds: number = 0;

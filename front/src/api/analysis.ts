@@ -12,6 +12,8 @@ export interface AnalysisEvent {
   label: string | null
   zone: string | null
   prompt: string
+  descriptionPrompt: string | null
+  description: string | null
   aiResponse: Record<string, unknown> | null
   aiProviderName: string
   aiModel: string

@@ -1,11 +1,9 @@
 import { orm } from "#src/database/index.js";
-import { GLOBAL_CONFIG } from "#src/config.js";
 import { AnalysisEvent, AnalysisStatus } from "./analysis-event.entity.js";
 import { AnalysisEventService } from "./analysis-event.service.js";
 import { AiProvider } from "#src/modules/v1/ai-provider/ai-provider.entity.js";
+import { aiAnalyzer } from "#src/services/ai/ai-analyzer.js";
 import type { SqlEntityManager } from "@mikro-orm/mariadb";
-
-const { API_URL } = GLOBAL_CONFIG.FRIGATE;
 
 export class AnalysisRetryService {
   async retry(eventGuid: string): Promise<void> {
@@ -26,9 +24,11 @@ export class AnalysisRetryService {
       return;
     }
 
+    // Reset previous results before reprocessing.
     await analysisService.update(eventGuid, {
       status: AnalysisStatus.PROCESSING,
       aiResponse: null,
+      description: null,
       error: undefined,
       processingTimeMs: undefined,
     });
@@ -36,18 +36,38 @@ export class AnalysisRetryService {
     const startTime = Date.now();
 
     try {
+      const analysisType = event.mediaPath?.endsWith('.mp4') ? 'video_clip' : 'snapshot';
       const mediaBase64 = event.mediaPath
-        ? await this.fetchMediaAsBase64(event.mediaPath, event.mediaPath.endsWith('.mp4') ? 'video_clip' : 'snapshot')
+        ? await this.fetchMediaAsBase64(event.mediaPath, analysisType)
         : undefined;
 
-      const analysisType = event.mediaPath?.endsWith('.mp4') ? 'video_clip' : 'snapshot';
-      const response = await this.callAiProvider(provider, event.prompt, mediaBase64, analysisType);
+      if (event.descriptionPrompt) {
+        // Two-stage retry: regenerate description and JSON.
+        const { response } = await aiAnalyzer.runTwoStage(
+          provider,
+          event.descriptionPrompt,
+          event.prompt,
+          mediaBase64,
+          analysisType,
+          async (description) => {
+            await analysisService.update(eventGuid, { description });
+          },
+        );
 
-      await analysisService.update(eventGuid, {
-        status: AnalysisStatus.COMPLETED,
-        aiResponse: response,
-        processingTimeMs: Date.now() - startTime,
-      });
+        await analysisService.update(eventGuid, {
+          status: AnalysisStatus.COMPLETED,
+          aiResponse: response,
+          processingTimeMs: Date.now() - startTime,
+        });
+      } else {
+        const response = await aiAnalyzer.callVisionJson(provider, event.prompt, mediaBase64, analysisType);
+
+        await analysisService.update(eventGuid, {
+          status: AnalysisStatus.COMPLETED,
+          aiResponse: response,
+          processingTimeMs: Date.now() - startTime,
+        });
+      }
     } catch (err) {
       await analysisService.update(eventGuid, {
         status: AnalysisStatus.FAILED,
@@ -57,52 +77,6 @@ export class AnalysisRetryService {
     } finally {
       em.clear();
     }
-  }
-
-  private async callAiProvider(provider: AiProvider, prompt: string, mediaBase64: string | undefined, analysisType: string): Promise<Record<string, unknown>> {
-    const messages: Array<Record<string, unknown>> = [];
-
-    if (mediaBase64) {
-      const mediaType = analysisType === 'video_clip' ? 'video_url' : 'image_url';
-      messages.push({
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          { type: mediaType, [mediaType]: { url: mediaBase64 } },
-        ],
-      });
-    } else {
-      messages.push({ role: 'user', content: prompt });
-    }
-
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (provider.apiKey) {
-      headers['Authorization'] = `Bearer ${provider.apiKey}`;
-    }
-
-    const res = await fetch(`${provider.baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: provider.model,
-        messages,
-        response_format: { type: 'json_object' },
-        chat_template_kwargs: { enable_thinking: false },
-      }),
-    });
-
-    if (!res.ok) {
-      throw new Error(`AI provider returned ${res.status}: ${await res.text()}`);
-    }
-
-    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
-    const content = data.choices[0]?.message?.content;
-
-    if (!content) {
-      throw new Error('AI provider returned empty response');
-    }
-
-    return JSON.parse(content) as Record<string, unknown>;
   }
 
   private async fetchMediaAsBase64(url: string, analysisType: string): Promise<string> {

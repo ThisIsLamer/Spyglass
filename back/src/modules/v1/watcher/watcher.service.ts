@@ -14,6 +14,7 @@ export interface CreateWatcherDto {
   cooldownSeconds?: number | undefined;
   enabled?: boolean | undefined;
   aiProviderGuid?: string | undefined;
+  descriptionPrompt?: string | null | undefined;
 }
 
 export interface UpdateWatcherDto {
@@ -26,6 +27,7 @@ export interface UpdateWatcherDto {
   cooldownSeconds?: number | undefined;
   enabled?: boolean | undefined;
   aiProviderGuid?: string | null | undefined;
+  descriptionPrompt?: string | null | undefined;
 }
 
 export class WatcherService {
@@ -54,6 +56,7 @@ export class WatcherService {
       ...(dto.cooldownSeconds !== undefined && { cooldownSeconds: dto.cooldownSeconds }),
       ...(dto.enabled !== undefined && { enabled: dto.enabled }),
       ...(aiProvider && { aiProvider }),
+      ...(dto.descriptionPrompt !== undefined && { descriptionPrompt: dto.descriptionPrompt }),
     });
 
     await this.em.flush();
@@ -78,6 +81,7 @@ export class WatcherService {
     if (dto.prompt !== undefined) watcher.prompt = dto.prompt;
     if (dto.cooldownSeconds !== undefined) watcher.cooldownSeconds = dto.cooldownSeconds;
     if (dto.enabled !== undefined) watcher.enabled = dto.enabled;
+    if (dto.descriptionPrompt !== undefined) watcher.descriptionPrompt = dto.descriptionPrompt;
 
     if (dto.aiProviderGuid === null) {
       watcher.aiProvider = null;

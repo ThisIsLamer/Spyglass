@@ -9,6 +9,8 @@ export class AnalysisEventPresenter {
       label: event.label ?? null,
       zone: event.zone ?? null,
       prompt: event.prompt,
+      descriptionPrompt: event.descriptionPrompt ?? null,
+      description: event.description ?? null,
       aiResponse: event.aiResponse ?? null,
       aiProviderName: event.aiProviderName,
       aiModel: event.aiModel,

@@ -10,6 +10,7 @@ export interface CreateAnalysisEventDto {
   frigateEventId: string;
   camera: string;
   prompt: string;
+  descriptionPrompt?: string | null | undefined;
   aiProviderName: string;
   aiModel: string;
   label?: string | undefined;
@@ -20,6 +21,7 @@ export interface CreateAnalysisEventDto {
 export interface UpdateAnalysisEventDto {
   status?: AnalysisStatus | undefined;
   aiResponse?: Record<string, unknown> | null | undefined;
+  description?: string | null | undefined;
   processingTimeMs?: number | undefined;
   error?: string | undefined;
 }
@@ -67,6 +69,7 @@ export class AnalysisEventService {
       aiProviderName: dto.aiProviderName,
       aiModel: dto.aiModel,
       status: AnalysisStatus.PENDING,
+      ...(dto.descriptionPrompt !== undefined && { descriptionPrompt: dto.descriptionPrompt }),
       ...(dto.label && { label: dto.label }),
       ...(dto.zone && { zone: dto.zone }),
       ...(dto.mediaPath && { mediaPath: dto.mediaPath }),
@@ -88,6 +91,7 @@ export class AnalysisEventService {
 
     if (dto.status !== undefined) event.status = dto.status;
     if (dto.aiResponse !== undefined) event.aiResponse = dto.aiResponse;
+    if (dto.description !== undefined) event.description = dto.description;
     if (dto.processingTimeMs !== undefined) event.processingTimeMs = dto.processingTimeMs;
     if (dto.error !== undefined) event.error = dto.error;
 

@@ -128,6 +128,17 @@
             />
 
             <v-select v-model="form.analysisType" :items="analysisTypes" :label="t('watchers.analysisType')" />
+
+            <v-textarea
+              v-model="form.descriptionPrompt"
+              auto-grow
+              clearable
+              :hint="t('watchers.descriptionPromptHint')"
+              :label="t('watchers.descriptionPrompt')"
+              persistent-hint
+              rows="3"
+            />
+
             <v-textarea v-model="form.prompt" auto-grow :label="t('watchers.prompt')" rows="3" />
             <v-text-field v-model.number="form.cooldownSeconds" :label="t('watchers.cooldown')" min="0" type="number" />
             <v-select v-model="form.aiProviderGuid" clearable :items="providerItems" :label="t('watchers.aiProvider')" />
@@ -214,6 +225,7 @@
     objectLabels: [] as string[],
     analysisType: 'snapshot' as 'snapshot' | 'video_clip',
     prompt: '',
+    descriptionPrompt: '' as string,
     cooldownSeconds: 30,
     aiProviderGuid: null as string | null,
     enabled: true,
@@ -223,7 +235,7 @@
     editingWatcher.value = null
     form.value = {
       name: '', cameras: [], zones: [], objectLabels: [],
-      analysisType: 'snapshot', prompt: '', cooldownSeconds: 30,
+      analysisType: 'snapshot', prompt: '', descriptionPrompt: '', cooldownSeconds: 30,
       aiProviderGuid: null, enabled: true,
     }
     formError.value = ''
@@ -239,6 +251,7 @@
       objectLabels: [...w.objectLabels],
       analysisType: w.analysisType,
       prompt: w.prompt,
+      descriptionPrompt: w.descriptionPrompt ?? '',
       cooldownSeconds: w.cooldownSeconds,
       aiProviderGuid: w.aiProvider?.guid ?? null,
       enabled: w.enabled,
@@ -284,6 +297,7 @@
         objectLabels: form.value.objectLabels,
         analysisType: form.value.analysisType,
         prompt: form.value.prompt,
+        descriptionPrompt: form.value.descriptionPrompt?.trim() || null,
         cooldownSeconds: form.value.cooldownSeconds,
         enabled: form.value.enabled,
         aiProviderGuid: form.value.aiProviderGuid,
@@ -300,6 +314,7 @@
         cameras: form.value.cameras,
         analysisType: form.value.analysisType,
         prompt: form.value.prompt,
+        ...(form.value.descriptionPrompt?.trim() && { descriptionPrompt: form.value.descriptionPrompt.trim() }),
         ...(form.value.zones.length > 0 && { zones: form.value.zones }),
         ...(form.value.objectLabels.length > 0 && { objectLabels: form.value.objectLabels }),
         cooldownSeconds: form.value.cooldownSeconds,

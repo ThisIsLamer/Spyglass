@@ -15,6 +15,7 @@ export interface Watcher {
   objectLabels: string[]
   analysisType: 'snapshot' | 'video_clip'
   prompt: string
+  descriptionPrompt: string | null
   cooldownSeconds: number
   aiProvider: WatcherAiProvider | null
   createdAt: string
@@ -41,6 +42,7 @@ export interface CreateWatcherDto {
   cameras: string[]
   analysisType: 'snapshot' | 'video_clip'
   prompt: string
+  descriptionPrompt?: string | null
   zones?: string[]
   objectLabels?: string[]
   cooldownSeconds?: number
@@ -53,6 +55,7 @@ export interface UpdateWatcherDto {
   cameras?: string[]
   analysisType?: 'snapshot' | 'video_clip'
   prompt?: string
+  descriptionPrompt?: string | null
   zones?: string[]
   objectLabels?: string[]
   cooldownSeconds?: number

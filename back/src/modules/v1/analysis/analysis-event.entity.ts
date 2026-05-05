@@ -11,7 +11,7 @@ export enum AnalysisStatus {
 }
 
 @Entity({ tableName: 'analysis_events' })
-export class AnalysisEvent extends BaseEntity<'guid' | 'label' | 'zone' | 'aiResponse' | 'processingTimeMs' | 'error' | 'mediaPath'> {
+export class AnalysisEvent extends BaseEntity<'guid' | 'label' | 'zone' | 'aiResponse' | 'processingTimeMs' | 'error' | 'mediaPath' | 'description' | 'descriptionPrompt'> {
   @Property({ type: 'string', length: 36, unique: true, onCreate: () => randomUUID() })
   guid: string = randomUUID();
 
@@ -32,6 +32,20 @@ export class AnalysisEvent extends BaseEntity<'guid' | 'label' | 'zone' | 'aiRes
 
   @Property({ type: 'text' })
   prompt!: string;
+
+  /**
+   * Description prompt used for stage 1 (vision → free text) in two-stage mode.
+   * Null when single-stage mode was used.
+   */
+  @Property({ type: 'text', nullable: true })
+  descriptionPrompt?: string | null;
+
+  /**
+   * Free-text description produced by stage 1 in two-stage mode.
+   * Null when single-stage mode was used or stage 1 failed.
+   */
+  @Property({ type: 'text', nullable: true })
+  description?: string | null;
 
   @Property({ type: 'json', nullable: true })
   aiResponse?: Record<string, unknown> | null;
